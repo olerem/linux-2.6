@@ -397,6 +397,14 @@ config MMC_WBSD
 
 	  If unsure, say N.
 
+config MMC_AU6601
+	tristate "Alcor Micro AU6601"
+	help
+	  This selects the Alcor Micro Multimedia card interface.
+
+	  If unsure, say N.
+
+
 config MMC_AU1X
 	tristate "Alchemy AU1XX0 MMC Card Interface support"
 	depends on MIPS_ALCHEMY
