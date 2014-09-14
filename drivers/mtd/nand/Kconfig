@@ -41,6 +41,13 @@ config MTD_SM_COMMON
 	tristate
 	default n
 
+config MTD_NAND_ASM9260
+	tristate "NFC support for ASM9260 SoC"
+	depends on OF
+	default n
+	help
+	  Enable support for the NAND controller found on Alphascale ASM9260 SoC.
+
 config MTD_NAND_DENALI
 	tristate
 
