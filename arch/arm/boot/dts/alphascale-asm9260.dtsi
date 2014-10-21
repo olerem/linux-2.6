@@ -53,6 +53,77 @@
 			reg = <0x80054000 0x200>;
 		};
 
+		uart0: serial@80000000 {
+			compatible = "alphascale,asm9260-auart";
+			reg = <0x80000000 0x4000>;
+			clocks = <&acc CLKID_SYS_UART0>, <&acc CLKID_AHB_UART0>;
+			interrupts = <15>;
+			status = "disabled";
+		};
+		uart1: serial@80004000 {
+			compatible = "alphascale,asm9260-auart";
+			reg = <0x80004000 0x4000>;
+			clocks = <&acc CLKID_SYS_UART1>, <&acc CLKID_AHB_UART1>;
+			interrupts = <16>;
+			status = "disabled";
+		};
+		uart2: serial@80008000 {
+			compatible = "alphascale,asm9260-auart";
+			reg = <0x80008000 0x4000>;
+			clocks = <&acc CLKID_SYS_UART2>, <&acc CLKID_AHB_UART2>;
+			interrupts = <17>;
+			status = "disabled";
+		};
+		uart3: serial@8000c000 {
+			compatible = "alphascale,asm9260-auart";
+			reg = <0x8000c000 0x4000>;
+			clocks = <&acc CLKID_SYS_UART3>, <&acc CLKID_AHB_UART3>;
+			interrupts = <18>;
+			status = "disabled";
+		};
+		uart4: serial@80010000 {
+			compatible = "alphascale,asm9260-auart";
+			reg = <0x80010000 0x4000>;
+			clocks = <&acc CLKID_SYS_UART4>, <&acc CLKID_AHB_UART4>;
+			interrupts = <19>;
+			status = "disabled";
+		};
+		uart5: serial@80014000 {
+			compatible = "alphascale,asm9260-auart";
+			reg = <0x80014000 0x4000>;
+			clocks = <&acc CLKID_SYS_UART5>, <&acc CLKID_AHB_UART5>;
+			interrupts = <20>;
+			status = "disabled";
+		};
+		uart6: serial@80018000 {
+			compatible = "alphascale,asm9260-auart";
+			reg = <0x80018000 0x4000>;
+			clocks = <&acc CLKID_SYS_UART6>, <&acc CLKID_AHB_UART6>;
+			interrupts = <21>;
+			status = "disabled";
+		};
+		uart7: serial@8001c000 {
+			compatible = "alphascale,asm9260-auart";
+			reg = <0x8001c000 0x4000>;
+			clocks = <&acc CLKID_SYS_UART7>, <&acc CLKID_AHB_UART7>;
+			interrupts = <22>;
+			status = "disabled";
+		};
+		uart8: serial@80020000 {
+			compatible = "alphascale,asm9260-auart";
+			reg = <0x80020000 0x4000>;
+			clocks = <&acc CLKID_SYS_UART8>, <&acc CLKID_AHB_UART8>;
+			interrupts = <23>;
+			status = "disabled";
+		};
+		uart9: serial@80024000 {
+			compatible = "alphascale,asm9260-auart";
+			reg = <0x80024000 0x4000>;
+			clocks = <&acc CLKID_SYS_UART9>, <&acc CLKID_AHB_UART9>;
+			interrupts = <24>;
+			status = "disabled";
+		};
+
 		timer0: timer@80088000 {
 			compatible = "alphascale,asm9260-timer";
 			reg = <0x80088000 0x4000>;
