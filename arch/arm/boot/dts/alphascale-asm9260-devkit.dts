@@ -10,4 +10,12 @@
 / {
 	model = "Alphascale asm9260 Development Kit";
 	compatible = "alphascale,asm9260devkit", "alphascale,asm9260";
+
+	aliases {
+		serial0 = &uart4;
+	};
+};
+
+&uart4 {
+	status = "okay";
 };
