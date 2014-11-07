@@ -46,6 +46,25 @@
 			reg = <0x80040000 0x204>;
 		};
 
+		pinctrl: pinctrl@80044000 {
+			compatible = "alphascale,asm9260-pinctrl";
+			reg = <0x80044000 0x400>;
+			clocks = <&acc CLKID_AHB_IOCONFIG>;
+			clock-names = "ahb";
+
+			/* SATA Activity and Present pins are not connected */
+			nand_fc0_pins_a: nand_fc0@0 {
+				alphascale,pins = "GPIO11_0", "GPIO11_1", "GPIO11_2",
+						  "GPIO11_3", "GPIO11_4", "GPIO11_6",
+						  "GPIO12_0", "GPIO12_1", "GPIO12_2",
+						  "GPIO12_3", "GPIO12_4", "GPIO12_5",
+						  "GPIO12_6", "GPIO12_7";
+				alphascale,function = "nand0";
+			};
+
+
+		};
+
 		icoll: interrupt-controller@80054000 {
 			compatible = "alphascale,asm9260-icoll";
 			interrupt-controller;
