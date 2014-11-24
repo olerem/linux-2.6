@@ -53,6 +53,40 @@
 			reg = <0x80054000 0x200>;
 		};
 
+		dwdma0: dma@80100000 {
+			compatible = "alphascale,asm9260-dma";
+			reg = <0x80100000 0x1000>;
+			interrupts = <39>;
+			clocks = <&acc CLKID_AHB_DMA0>;
+			/* status = "disabled"; */
+
+			dma-channels = <8>;
+			#dma-cells = <3>;
+			dma-requests = <32>;
+			chan_allocation_order = <1>;
+			chan_priority = <1>;
+			block_size = <0xfff>;
+			dma-masters = <2>;
+			data_width = <3 3 0 0>;
+		};
+
+		dwdma1: dma@80200000 {
+			compatible = "alphascale,asm9260-dma";
+			reg = <0x80200000 0x1000>;
+			interrupts = <47>;
+			clocks = <&acc CLKID_AHB_DMA1>;
+			/* status = "disabled"; */
+
+			dma-channels = <8>;
+			#dma-cells = <3>;
+			dma-requests = <32>;
+			chan_allocation_order = <1>;
+			chan_priority = <1>;
+			block_size = <0xfff>;
+			dma-masters = <2>;
+			data_width = <3 3 0 0>;
+		};
+
 		uart0: serial@80000000 {
 			compatible = "alphascale,asm9260-auart";
 			reg = <0x80000000 0x4000>;
