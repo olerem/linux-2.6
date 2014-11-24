@@ -98,7 +98,7 @@ static inline void dw_dma_acpi_controller_register(struct dw_dma *dw) {}
 
 #ifdef CONFIG_OF
 static struct dw_dma_platform_data *
-dw_dma_parse_dt(struct platform_device *pdev)
+dw_dma_parse_dt(struct platform_device *pdev, struct dw_dma_chip *chip)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct dw_dma_platform_data *pdata;
@@ -140,11 +140,13 @@ dw_dma_parse_dt(struct platform_device *pdev)
 		for (tmp = 0; tmp < pdata->nr_masters; tmp++)
 			pdata->data_width[tmp] = arr[tmp];
 
+	chip->clk = of_clk_get(np, 0);
+
 	return pdata;
 }
 #else
 static inline struct dw_dma_platform_data *
-dw_dma_parse_dt(struct platform_device *pdev)
+dw_dma_parse_dt(struct platform_device *pdev, struct dw_dma_chip *chip)
 {
 	return NULL;
 }
@@ -175,13 +177,17 @@ static int dw_probe(struct platform_device *pdev)
 	if (err)
 		return err;
 
+	chip->clk = NULL;
 	pdata = dev_get_platdata(dev);
 	if (!pdata)
-		pdata = dw_dma_parse_dt(pdev);
+		pdata = dw_dma_parse_dt(pdev, chip);
 
 	chip->dev = dev;
 
-	chip->clk = devm_clk_get(chip->dev, "hclk");
+	/* Try DT first. If not enabled or filed, then try devm_clk_get. */
+	if (IS_ERR_OR_NULL(chip->clk))
+		chip->clk = devm_clk_get(chip->dev, "hclk");
+
 	if (IS_ERR(chip->clk))
 		return PTR_ERR(chip->clk);
 	err = clk_prepare_enable(chip->clk);
