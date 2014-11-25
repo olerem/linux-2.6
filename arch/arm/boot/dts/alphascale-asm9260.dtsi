@@ -130,5 +130,15 @@
 			clocks = <&acc CLKID_AHB_TIMER0>;
 			interrupts = <29>;
 		};
+
+		nand_controller0: nand@80600000 {
+			compatible = "alphascale,asm9260-nand";
+			reg = <0x80600000 0x100>;
+			interrupts = <14>;
+			clocks = <&acc CLKID_SYS_NAND>, <&acc CLKID_AHB_NAND>;
+			clock-names = "mod", "ahb";
+			status = "disabled";
+		};
+
 	};
 };
