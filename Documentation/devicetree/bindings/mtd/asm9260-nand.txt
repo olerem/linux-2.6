@@ -1,0 +1,25 @@
+* Alphascales's asm9260_nand
+
+Required properties:
+- compatible: "alphascale,asm9260-nand"
+- reg: address range of the nfc block
+- interrupts: irq to be used
+- clocks: clock ids.
+- clock-names: only "sys" and "ahb" should be used.
+- nand-ecc-strength: see nand.txt
+- nand-ecc-mode: see nand.txt
+- nand-on-flash-bbt: see nand.txt
+- nand-max-chips: maximal number of attached chips. asm9260 support max 2.
+
+Example:
+
+	nand@d8000000 {
+		compatible = "alphascale,asm9260-nand";
+		reg = <0x80600000 0x100>;
+		interrupts = <29>;
+		nand-ecc-strength = <4>;
+		nand-ecc-mode = "hw";
+		nand-max-chips = <1>;
+		clocks = <&acc CLKID_SYS_NAND>, <&acc CLKID_AHB_NAND>;
+		clock-names = "sys", "ahb";
+	};
