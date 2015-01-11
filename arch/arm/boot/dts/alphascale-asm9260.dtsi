@@ -124,6 +124,14 @@
 			status = "disabled";
 		};
 
+		watchdog0: watchdog@80048000 {
+			compatible = "alphascale,asm9260-wdt";
+			reg = <0x80048000 0x10>;
+			clocks = <&acc CLKID_SYS_WDT>, <&acc CLKID_AHB_WDT>;
+			clock-names = "mod", "ahb";
+			interrupts = <55>;
+		};
+
 		timer0: timer@80088000 {
 			compatible = "alphascale,asm9260-timer";
 			reg = <0x80088000 0x4000>;
