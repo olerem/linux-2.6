@@ -139,6 +139,14 @@
 			interrupts = <29>;
 		};
 
+		rtc0: rtc@800a0000 {
+			compatible = "alphascale,asm9260-rtc";
+			reg = <0x800a0000 0x100>;
+			clocks = <&acc CLKID_AHB_RTC>;
+			clock-names = "ahb";
+			interrupts = <2>;
+		};
+
 		nand_controller0: nand@80600000 {
 			compatible = "alphascale,asm9260-nand";
 			reg = <0x80600000 0x100>;
