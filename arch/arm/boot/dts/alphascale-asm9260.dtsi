@@ -147,6 +147,34 @@
 			interrupts = <2>;
 		};
 
+		ethernet0: dwmac@80500000 {
+			device_type 	= "network";
+			compatible	= "st,stih415-dwmac", "snps,dwmac", "snps,dwmac-3.610";
+			status 		= "disabled";
+
+			reg 		= <0x80500000 0x8000>, <0x148 0x4>;
+			reg-names	= "stmmaceth", "sti-ethconf";
+
+			/* 12, 13 or 23, 24 for mac1 ? */
+			interrupts 	= <12>, <13>;
+			interrupt-names = "macirq", "eth_wake_irq";
+/*
+			resets			= <&softreset STIH415_ETH0_SOFTRESET>;
+			reset-names		= "stmmaceth";
+
+			snps,pbl 	= <32>;
+			snps,mixed-burst;
+			snps,force_sf_dma_mode;
+
+			st,syscon	= <&syscfg_rear>;
+
+			pinctrl-names 	= "default";
+			pinctrl-0	= <&pinctrl_mii0>;
+*/
+			clock-names	= "stmmaceth", "sti-ethclk";
+			clocks		= <&acc CLKID_SYS_MAC>, <&acc CLKID_AHB_MAC1>;
+		};
+
 		nand_controller0: nand@80600000 {
 			compatible = "alphascale,asm9260-nand";
 			reg = <0x80600000 0x100>;
