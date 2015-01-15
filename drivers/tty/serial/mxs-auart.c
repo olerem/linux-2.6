@@ -1442,10 +1442,15 @@ static int mxs_auart_probe(struct platform_device *pdev)
 	if (ret)
 		goto out_free_gpio_irq;
 
-	version = readl(s->port.membase + AUART_VERSION);
-	dev_info(&pdev->dev, "Found APPUART %d.%d.%d\n",
-	       (version >> 24) & 0xff,
-	       (version >> 16) & 0xff, version & 0xffff);
+	/* ASM9260 don't have version reg */
+	if (is_asm9260_auart(s))
+		dev_info(&pdev->dev, "Found APPUART ASM9260\n");
+	else {
+		version = readl(s->port.membase + AUART_VERSION);
+		dev_info(&pdev->dev, "Found APPUART %d.%d.%d\n",
+			 (version >> 24) & 0xff,
+			 (version >> 16) & 0xff, version & 0xffff);
+	}
 
 	return 0;
 
