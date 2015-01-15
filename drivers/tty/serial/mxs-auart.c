@@ -156,6 +156,7 @@ struct mxs_auart_port {
 	struct mxs_auart_regs regs;
 
 	struct clk *clk;
+	struct clk *clk_ahb;
 	struct device *dev;
 
 	/* for DMA */
@@ -764,10 +765,19 @@ static void mxs_auart_settermios(struct uart_port *u,
 	}
 
 	/* set baud rate */
-	baud_min = DIV_ROUND_UP(u->uartclk * 32, AUART_LINECTRL_BAUD_DIV_MAX);
-	baud_max = u->uartclk * 32 / AUART_LINECTRL_BAUD_DIV_MIN;
-	baud = uart_get_baud_rate(u, termios, old, baud_min, baud_max);
-	div = u->uartclk * 32 / baud;
+	if (is_asm9260_auart(s)) {
+		baud = uart_get_baud_rate(u, termios, old,
+				u->uartclk * 4 / 0x3FFFFF,
+				u->uartclk / 16);
+		div = u->uartclk * 4 / baud;
+	} else {
+		baud_min = DIV_ROUND_UP(u->uartclk * 32,
+					AUART_LINECTRL_BAUD_DIV_MAX);
+		baud_max = u->uartclk * 32 / AUART_LINECTRL_BAUD_DIV_MIN;
+		baud = uart_get_baud_rate(u, termios, old, baud_min, baud_max);
+		div = u->uartclk * 32 / baud;
+	}
+
 	ctrl |= AUART_LINECTRL_BAUD_DIVFRAC(div & 0x3F);
 	ctrl |= AUART_LINECTRL_BAUD_DIVINT(div >> 6);
 	writel(ctrl, s->regs.linectrl);
@@ -1203,6 +1213,40 @@ static void mxs_init_regs(struct mxs_auart_port *s)
 	}
 }
 
+static int mxs_get_dt_clks(struct mxs_auart_port *s,
+		struct platform_device *pdev)
+{
+	struct device_node *np = pdev->dev.of_node;
+	int clk_idx = 0, err;
+
+	s->clk = of_clk_get(np, clk_idx);
+	if (IS_ERR(s->clk))
+		goto out_err;
+
+	/* configure AHB clock */
+	clk_idx = 1;
+	s->clk_ahb = of_clk_get(np, clk_idx);
+	if (IS_ERR(s->clk_ahb))
+		goto out_err;
+
+	err = clk_prepare_enable(s->clk_ahb);
+	if (err)
+		dev_err(s->dev, "Failed to enable ahb_clk!\n");
+
+	err = clk_set_rate(s->clk, clk_get_rate(s->clk_ahb));
+	if (err)
+		dev_err(s->dev, "Failed to set rate!\n");
+
+	err = clk_prepare_enable(s->clk);
+	if (err)
+		dev_err(s->dev, "Failed to enable clk!\n");
+
+	return 0;
+out_err:
+	dev_err(s->dev, "%s: Failed to get clk (%i)\n", __func__, clk_idx);
+	return 1;
+}
+
 /*
  * This function returns 1 if pdev isn't a device instatiated by dt, 0 if it
  * could successfully get all information from dt or a negative errno.
@@ -1321,9 +1365,14 @@ static int mxs_auart_probe(struct platform_device *pdev)
 		s->devtype = pdev->id_entry->driver_data;
 	}
 
-	s->clk = devm_clk_get(&pdev->dev, NULL);
-	if (IS_ERR(s->clk))
-		return PTR_ERR(s->clk);
+	if (is_asm9260_auart(s)) {
+		if (mxs_get_dt_clks(s, pdev))
+			return -ENODEV;
+	} else {
+		s->clk = devm_clk_get(&pdev->dev, NULL);
+		if (IS_ERR(s->clk))
+			return PTR_ERR(s->clk);
+	}
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!r)
