@@ -610,8 +610,8 @@ static void mxs_auart_dma_exit_channel(struct mxs_auart_port *s)
 		s->rx_dma_chan = NULL;
 	}
 
-	kfree(s->tx_dma_buf);
-	kfree(s->rx_dma_buf);
+	devm_kfree(s->dev, s->tx_dma_buf);
+	devm_kfree(s->dev, s->rx_dma_buf);
 	s->tx_dma_buf = NULL;
 	s->rx_dma_buf = NULL;
 }
@@ -637,7 +637,8 @@ static int mxs_auart_dma_init(struct mxs_auart_port *s)
 	s->rx_dma_chan = dma_request_slave_channel(s->dev, "rx");
 	if (!s->rx_dma_chan)
 		goto err_out;
-	s->rx_dma_buf = kzalloc(UART_XMIT_SIZE, GFP_KERNEL | GFP_DMA);
+	s->rx_dma_buf = devm_kzalloc(s->dev,
+			UART_XMIT_SIZE, GFP_KERNEL | GFP_DMA);
 	if (!s->rx_dma_buf)
 		goto err_out;
 
@@ -645,7 +646,8 @@ static int mxs_auart_dma_init(struct mxs_auart_port *s)
 	s->tx_dma_chan = dma_request_slave_channel(s->dev, "tx");
 	if (!s->tx_dma_chan)
 		goto err_out;
-	s->tx_dma_buf = kzalloc(UART_XMIT_SIZE, GFP_KERNEL | GFP_DMA);
+	s->tx_dma_buf = devm_kzalloc(s->dev,
+			UART_XMIT_SIZE, GFP_KERNEL | GFP_DMA);
 	if (!s->tx_dma_buf)
 		goto err_out;
 
@@ -1377,12 +1379,25 @@ static int mxs_auart_probe(struct platform_device *pdev)
 	}
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r)
+	if (!r) {
+		dev_err(s->dev, "platform_get_resource filed!\n");
 		return -ENXIO;
+	}
 
+	if (!devm_request_mem_region(s->dev, r->start, resource_size(r),
+				dev_name(s->dev))) {
+		dev_err(s->dev, "request_mem_region filed!\n");
+		return -ENXIO;
+	}
+
+	s->port.membase = devm_ioremap_nocache(s->dev, r->start,
+			resource_size(r));
+	if (!s->port.membase) {
+		dev_err(s->dev, "ioremap filed!\n");
+		return -ENXIO;
+	}
 
 	s->port.mapbase = r->start;
-	s->port.membase = ioremap(r->start, resource_size(r));
 	s->port.ops = &mxs_auart_ops;
 	s->port.iotype = UPIO_MEM;
 	s->port.fifosize = MXS_AUART_FIFO_SIZE;
@@ -1398,8 +1413,9 @@ static int mxs_auart_probe(struct platform_device *pdev)
 		return irq;
 
 	s->port.irq = irq;
-	ret = devm_request_irq(&pdev->dev, irq, mxs_auart_irq_handle, 0,
-			       dev_name(&pdev->dev), s);
+	ret = devm_request_threaded_irq(s->dev, s->irq, NULL,
+			mxs_auart_irq_handle, IRQF_ONESHOT,
+			dev_name(&pdev->dev), s);
 	if (ret)
 		return ret;
 
