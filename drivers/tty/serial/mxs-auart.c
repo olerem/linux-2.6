@@ -1421,18 +1421,20 @@ static int mxs_auart_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, s);
 
-	ret = mxs_auart_init_gpios(s, &pdev->dev);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to initialize GPIOs.\n");
-		return ret;
-	}
+	if (!is_asm9260_auart(s)) {
+		ret = mxs_auart_init_gpios(s, &pdev->dev);
+		if (ret) {
+			dev_err(&pdev->dev, "Failed to initialize GPIOs.\n");
+			return ret;
+		}
 
-	/*
-	 * Get the GPIO lines IRQ
-	 */
-	ret = mxs_auart_request_gpio_irq(s);
-	if (ret)
-		return ret;
+		/*
+		 * Get the GPIO lines IRQ
+		 */
+		ret = mxs_auart_request_gpio_irq(s);
+		if (ret)
+			return ret;
+	}
 
 	auart_port[s->port.line] = s;
 
