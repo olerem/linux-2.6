@@ -1408,12 +1408,13 @@ config SERIAL_PCH_UART_CONSOLE
 	  warnings and which allows logins in single user mode).
 
 config SERIAL_MXS_AUART
-	depends on ARCH_MXS
+	depends on ARCH_MXS || MACH_ASM9260
 	tristate "MXS AUART support"
 	select SERIAL_CORE
 	select SERIAL_MCTRL_GPIO if GPIOLIB
 	help
-	  This driver supports the MXS Application UART (AUART) port.
+	  This driver supports the MXS and Alphascale ASM9260 Application
+	  UART (AUART) port.
 
 config SERIAL_MXS_AUART_CONSOLE
 	bool "MXS AUART console support"
