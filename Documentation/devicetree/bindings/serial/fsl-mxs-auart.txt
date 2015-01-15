@@ -2,7 +2,7 @@
 
 Required properties:
 - compatible : Should be "fsl,<soc>-auart". The supported SoCs include
-  imx23 and imx28.
+  imx23 and imx28. Or "alphascale,asm9260-auart".
 - reg : Address and length of the register set for the device
 - interrupts : Should contain the auart interrupt numbers
 - dmas: DMA specifier, consisting of a phandle to DMA controller node

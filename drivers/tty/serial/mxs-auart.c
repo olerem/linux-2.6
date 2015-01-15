@@ -1,17 +1,18 @@
 /*
- * Freescale STMP37XX/STMP378X Application UART driver
+ * Application UART driver for:
+ *	Freescale STMP37XX/STMP378X
+ *	Alphascale ASM9260
  *
  * Author: dmitry pervushin <dimka@embeddedalley.com>
  *
+ * Copyright 2014 Oleksij Rempel <linux@rempel-privat.de>
+ *	Provide Alphascale ASM9260 support.
  * Copyright 2008-2010 Freescale Semiconductor, Inc.
  * Copyright 2008 Embedded Alley Solutions, Inc All Rights Reserved.
  *
  * The code contained herein is licensed under the GNU General Public
  * License. You may obtain a copy of the GNU General Public License
  * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 #if defined(CONFIG_SERIAL_MXS_AUART_CONSOLE) && defined(CONFIG_MAGIC_SYSRQ)
@@ -41,6 +42,7 @@
 #include <linux/dmaengine.h>
 
 #include <asm/cacheflush.h>
+#include "alphascale,asm9260_serial.h"
 
 #include <linux/gpio.h>
 #include <linux/gpio/consumer.h>
@@ -51,30 +53,16 @@
 #define MXS_AUART_PORTS 5
 #define MXS_AUART_FIFO_SIZE		16
 
+#define SET_REG				0x4
+#define CLR_REG				0x8
+#define TOG_REG				0xc
+
 #define AUART_CTRL0			0x00000000
-#define AUART_CTRL0_SET			0x00000004
-#define AUART_CTRL0_CLR			0x00000008
-#define AUART_CTRL0_TOG			0x0000000c
 #define AUART_CTRL1			0x00000010
-#define AUART_CTRL1_SET			0x00000014
-#define AUART_CTRL1_CLR			0x00000018
-#define AUART_CTRL1_TOG			0x0000001c
 #define AUART_CTRL2			0x00000020
-#define AUART_CTRL2_SET			0x00000024
-#define AUART_CTRL2_CLR			0x00000028
-#define AUART_CTRL2_TOG			0x0000002c
 #define AUART_LINECTRL			0x00000030
-#define AUART_LINECTRL_SET		0x00000034
-#define AUART_LINECTRL_CLR		0x00000038
-#define AUART_LINECTRL_TOG		0x0000003c
 #define AUART_LINECTRL2			0x00000040
-#define AUART_LINECTRL2_SET		0x00000044
-#define AUART_LINECTRL2_CLR		0x00000048
-#define AUART_LINECTRL2_TOG		0x0000004c
 #define AUART_INTR			0x00000050
-#define AUART_INTR_SET			0x00000054
-#define AUART_INTR_CLR			0x00000058
-#define AUART_INTR_TOG			0x0000005c
 #define AUART_DATA			0x00000060
 #define AUART_STAT			0x00000070
 #define AUART_DEBUG			0x00000080
@@ -141,6 +129,17 @@ static struct uart_driver auart_driver;
 enum mxs_auart_type {
 	IMX23_AUART,
 	IMX28_AUART,
+	ASM9260_AUART,
+};
+
+struct mxs_auart_regs {
+	void __iomem *ctrl0;
+	void __iomem *ctrl1;
+	void __iomem *ctrl2;
+	void __iomem *linectrl;
+	void __iomem *intr;
+	void __iomem *data;
+	void __iomem *stat;
 };
 
 struct mxs_auart_port {
@@ -154,7 +153,10 @@ struct mxs_auart_port {
 	unsigned int mctrl_prev;
 	enum mxs_auart_type devtype;
 
+	struct mxs_auart_regs regs;
+
 	struct clk *clk;
+	struct clk *clk_ahb;
 	struct device *dev;
 
 	/* for DMA */
@@ -174,6 +176,7 @@ struct mxs_auart_port {
 static const struct platform_device_id mxs_auart_devtype[] = {
 	{ .name = "mxs-auart-imx23", .driver_data = IMX23_AUART },
 	{ .name = "mxs-auart-imx28", .driver_data = IMX28_AUART },
+	{ .name = "as-auart-asm9260", .driver_data = ASM9260_AUART },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(platform, mxs_auart_devtype);
@@ -185,6 +188,9 @@ static const struct of_device_id mxs_auart_dt_ids[] = {
 	}, {
 		.compatible = "fsl,imx23-auart",
 		.data = &mxs_auart_devtype[IMX23_AUART]
+	}, {
+		.compatible = "alphascale,asm9260-auart",
+		.data = &mxs_auart_devtype[ASM9260_AUART]
 	}, { /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, mxs_auart_dt_ids);
@@ -192,6 +198,11 @@ MODULE_DEVICE_TABLE(of, mxs_auart_dt_ids);
 static inline int is_imx28_auart(struct mxs_auart_port *s)
 {
 	return s->devtype == IMX28_AUART;
+}
+
+static inline int is_asm9260_auart(struct mxs_auart_port *s)
+{
+	return s->devtype == ASM9260_AUART;
 }
 
 static inline bool auart_dma_enabled(struct mxs_auart_port *s)
@@ -295,19 +306,19 @@ static void mxs_auart_tx_chars(struct mxs_auart_port *s)
 	}
 
 
-	while (!(readl(s->port.membase + AUART_STAT) &
+	while (!(readl(s->regs.stat) &
 		 AUART_STAT_TXFF)) {
 		if (s->port.x_char) {
 			s->port.icount.tx++;
 			writel(s->port.x_char,
-				     s->port.membase + AUART_DATA);
+				     s->regs.data);
 			s->port.x_char = 0;
 			continue;
 		}
 		if (!uart_circ_empty(xmit) && !uart_tx_stopped(&s->port)) {
 			s->port.icount.tx++;
 			writel(xmit->buf[xmit->tail],
-				     s->port.membase + AUART_DATA);
+				     s->regs.data);
 			xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
 		} else
 			break;
@@ -317,10 +328,10 @@ static void mxs_auart_tx_chars(struct mxs_auart_port *s)
 
 	if (uart_circ_empty(&(s->port.state->xmit)))
 		writel(AUART_INTR_TXIEN,
-			     s->port.membase + AUART_INTR_CLR);
+			     s->regs.intr + CLR_REG);
 	else
 		writel(AUART_INTR_TXIEN,
-			     s->port.membase + AUART_INTR_SET);
+			     s->regs.intr + SET_REG);
 
 	if (uart_tx_stopped(&s->port))
 		mxs_auart_stop_tx(&s->port);
@@ -332,8 +343,8 @@ static void mxs_auart_rx_char(struct mxs_auart_port *s)
 	u32 stat;
 	u8 c;
 
-	c = readl(s->port.membase + AUART_DATA);
-	stat = readl(s->port.membase + AUART_STAT);
+	c = readl(s->regs.data);
+	stat = readl(s->regs.stat);
 
 	flag = TTY_NORMAL;
 	s->port.icount.rx++;
@@ -368,7 +379,7 @@ static void mxs_auart_rx_char(struct mxs_auart_port *s)
 
 	uart_insert_char(&s->port, stat, AUART_STAT_OERR, c, flag);
 out:
-	writel(stat, s->port.membase + AUART_STAT);
+	writel(stat, s->regs.stat);
 }
 
 static void mxs_auart_rx_chars(struct mxs_auart_port *s)
@@ -376,13 +387,13 @@ static void mxs_auart_rx_chars(struct mxs_auart_port *s)
 	u32 stat = 0;
 
 	for (;;) {
-		stat = readl(s->port.membase + AUART_STAT);
+		stat = readl(s->regs.stat);
 		if (stat & AUART_STAT_RXFE)
 			break;
 		mxs_auart_rx_char(s);
 	}
 
-	writel(stat, s->port.membase + AUART_STAT);
+	writel(stat, s->regs.stat);
 	tty_flip_buffer_push(&s->port.state->port);
 }
 
@@ -418,7 +429,7 @@ static void mxs_auart_set_mctrl(struct uart_port *u, unsigned mctrl)
 {
 	struct mxs_auart_port *s = to_auart_port(u);
 
-	u32 ctrl = readl(u->membase + AUART_CTRL2);
+	u32 ctrl = readl(s->regs.ctrl2);
 
 	ctrl &= ~(AUART_CTRL2_RTSEN | AUART_CTRL2_RTS);
 	if (mctrl & TIOCM_RTS) {
@@ -428,7 +439,7 @@ static void mxs_auart_set_mctrl(struct uart_port *u, unsigned mctrl)
 			ctrl |= AUART_CTRL2_RTS;
 	}
 
-	writel(ctrl, u->membase + AUART_CTRL2);
+	writel(ctrl, s->regs.ctrl2);
 
 	mctrl_gpio_set(s->gpios, mctrl);
 }
@@ -459,7 +470,7 @@ static u32 mxs_auart_modem_status(struct mxs_auart_port *s, u32 mctrl)
 static u32 mxs_auart_get_mctrl(struct uart_port *u)
 {
 	struct mxs_auart_port *s = to_auart_port(u);
-	u32 stat = readl(u->membase + AUART_STAT);
+	u32 stat = readl(s->regs.stat);
 	u32 mctrl = 0;
 
 	if (stat & AUART_STAT_CTS)
@@ -536,14 +547,14 @@ static void dma_rx_callback(void *arg)
 
 	dma_unmap_sg(s->dev, &s->rx_sgl, 1, DMA_FROM_DEVICE);
 
-	stat = readl(s->port.membase + AUART_STAT);
+	stat = readl(s->regs.stat);
 	stat &= ~(AUART_STAT_OERR | AUART_STAT_BERR |
 			AUART_STAT_PERR | AUART_STAT_FERR);
 
 	count = stat & AUART_STAT_RXCOUNT_MASK;
 	tty_insert_flip_string(port, s->rx_dma_buf, count);
 
-	writel(stat, s->port.membase + AUART_STAT);
+	writel(stat, s->regs.stat);
 	tty_flip_buffer_push(port);
 
 	/* start the next DMA for RX. */
@@ -607,7 +618,7 @@ static void mxs_auart_dma_exit(struct mxs_auart_port *s)
 {
 
 	writel(AUART_CTRL2_TXDMAE | AUART_CTRL2_RXDMAE | AUART_CTRL2_DMAONERR,
-		s->port.membase + AUART_CTRL2_CLR);
+		s->regs.ctrl2 + CLR_REG);
 
 	mxs_auart_dma_exit_channel(s);
 	s->flags &= ~MXS_AUART_DMA_ENABLED;
@@ -666,7 +677,7 @@ static void mxs_auart_settermios(struct uart_port *u,
 	cflag = termios->c_cflag;
 
 	ctrl = AUART_LINECTRL_FEN;
-	ctrl2 = readl(u->membase + AUART_CTRL2);
+	ctrl2 = readl(s->regs.ctrl2);
 
 	/* byte size */
 	switch (cflag & CSIZE) {
@@ -754,15 +765,24 @@ static void mxs_auart_settermios(struct uart_port *u,
 	}
 
 	/* set baud rate */
-	baud_min = DIV_ROUND_UP(u->uartclk * 32, AUART_LINECTRL_BAUD_DIV_MAX);
-	baud_max = u->uartclk * 32 / AUART_LINECTRL_BAUD_DIV_MIN;
-	baud = uart_get_baud_rate(u, termios, old, baud_min, baud_max);
-	div = u->uartclk * 32 / baud;
+	if (is_asm9260_auart(s)) {
+		baud = uart_get_baud_rate(u, termios, old,
+					  u->uartclk * 4 / 0x3FFFFF,
+					  u->uartclk / 16);
+		div = u->uartclk * 4 / baud;
+	} else {
+		baud_min = DIV_ROUND_UP(u->uartclk * 32,
+					AUART_LINECTRL_BAUD_DIV_MAX);
+		baud_max = u->uartclk * 32 / AUART_LINECTRL_BAUD_DIV_MIN;
+		baud = uart_get_baud_rate(u, termios, old, baud_min, baud_max);
+		div = u->uartclk * 32 / baud;
+	}
+
 	ctrl |= AUART_LINECTRL_BAUD_DIVFRAC(div & 0x3F);
 	ctrl |= AUART_LINECTRL_BAUD_DIVINT(div >> 6);
+	writel(ctrl, s->regs.linectrl);
 
-	writel(ctrl, u->membase + AUART_LINECTRL);
-	writel(ctrl2, u->membase + AUART_CTRL2);
+	writel(ctrl2, s->regs.ctrl2);
 
 	uart_update_timeout(u, termios->c_cflag, baud);
 
@@ -772,7 +792,7 @@ static void mxs_auart_settermios(struct uart_port *u,
 		if (!mxs_auart_dma_prep_rx(s)) {
 			/* Disable the normal RX interrupt. */
 			writel(AUART_INTR_RXIEN | AUART_INTR_RTIEN,
-					u->membase + AUART_INTR_CLR);
+					s->regs.intr + CLR_REG);
 		} else {
 			mxs_auart_dma_exit(s);
 			dev_err(s->dev, "We can not start up the DMA.\n");
@@ -802,16 +822,16 @@ static irqreturn_t mxs_auart_irq_handle(int irq, void *context)
 	u32 istat;
 	struct mxs_auart_port *s = context;
 	u32 mctrl_temp = s->mctrl_prev;
-	u32 stat = readl(s->port.membase + AUART_STAT);
+	u32 stat = readl(s->regs.stat);
 
-	istat = readl(s->port.membase + AUART_INTR);
+	istat = readl(s->regs.intr);
 
 	/* ack irq */
 	writel(istat & (AUART_INTR_RTIS
 		| AUART_INTR_TXIS
 		| AUART_INTR_RXIS
 		| AUART_INTR_CTSMIS),
-			s->port.membase + AUART_INTR_CLR);
+			s->regs.intr + CLR_REG);
 
 	/*
 	 * Dealing with GPIO interrupt
@@ -828,7 +848,7 @@ static irqreturn_t mxs_auart_irq_handle(int irq, void *context)
 			uart_handle_cts_change(&s->port,
 					stat & AUART_STAT_CTS);
 		writel(AUART_INTR_CTSMIS,
-				s->port.membase + AUART_INTR_CLR);
+				s->regs.intr + CLR_REG);
 		istat &= ~AUART_INTR_CTSMIS;
 	}
 
@@ -846,44 +866,44 @@ static irqreturn_t mxs_auart_irq_handle(int irq, void *context)
 	return IRQ_HANDLED;
 }
 
-static void mxs_auart_reset_deassert(struct uart_port *u)
+static void mxs_auart_reset_deassert(struct mxs_auart_port *s)
 {
 	int i;
 	unsigned int reg;
 
-	writel(AUART_CTRL0_SFTRST, u->membase + AUART_CTRL0_CLR);
+	writel(AUART_CTRL0_SFTRST, s->regs.ctrl0 + CLR_REG);
 
 	for (i = 0; i < 10000; i++) {
-		reg = readl(u->membase + AUART_CTRL0);
+		reg = readl(s->regs.ctrl0);
 		if (!(reg & AUART_CTRL0_SFTRST))
 			break;
 		udelay(3);
 	}
-	writel(AUART_CTRL0_CLKGATE, u->membase + AUART_CTRL0_CLR);
+	writel(AUART_CTRL0_CLKGATE, s->regs.ctrl0 + CLR_REG);
 }
 
-static void mxs_auart_reset_assert(struct uart_port *u)
+static void mxs_auart_reset_assert(struct mxs_auart_port *s)
 {
 	int i;
 	u32 reg;
 
-	reg = readl(u->membase + AUART_CTRL0);
+	reg = readl(s->regs.ctrl0);
 	/* if already in reset state, keep it untouched */
 	if (reg & AUART_CTRL0_SFTRST)
 		return;
 
-	writel(AUART_CTRL0_CLKGATE, u->membase + AUART_CTRL0_CLR);
-	writel(AUART_CTRL0_SFTRST, u->membase + AUART_CTRL0_SET);
+	writel(AUART_CTRL0_CLKGATE, s->regs.ctrl0 + CLR_REG);
+	writel(AUART_CTRL0_SFTRST, s->regs.ctrl0 + SET_REG);
 
 	for (i = 0; i < 1000; i++) {
-		reg = readl(u->membase + AUART_CTRL0);
+		reg = readl(s->regs.ctrl0);
 		/* reset is finished when the clock is gated */
 		if (reg & AUART_CTRL0_CLKGATE)
 			return;
 		udelay(10);
 	}
 
-	dev_err(u->dev, "Failed to reset the unit.");
+	dev_err(s->dev, "Failed to reset the unit.");
 }
 
 static int mxs_auart_startup(struct uart_port *u)
@@ -896,17 +916,17 @@ static int mxs_auart_startup(struct uart_port *u)
 		return ret;
 
 	if (uart_console(u)) {
-		writel(AUART_CTRL0_CLKGATE, u->membase + AUART_CTRL0_CLR);
+		writel(AUART_CTRL0_CLKGATE, s->regs.ctrl0 + CLR_REG);
 	} else {
 		/* reset the unit to a well known state */
-		mxs_auart_reset_assert(u);
-		mxs_auart_reset_deassert(u);
+		mxs_auart_reset_assert(s);
+		mxs_auart_reset_deassert(s);
 	}
 
-	writel(AUART_CTRL2_UARTEN, u->membase + AUART_CTRL2_SET);
+	writel(AUART_CTRL2_UARTEN, s->regs.ctrl2 + SET_REG);
 
 	writel(AUART_INTR_RXIEN | AUART_INTR_RTIEN | AUART_INTR_CTSMIEN,
-			u->membase + AUART_INTR);
+			s->regs.intr);
 
 	/* Reset FIFO size (it could have changed if DMA was enabled) */
 	u->fifosize = MXS_AUART_FIFO_SIZE;
@@ -915,7 +935,7 @@ static int mxs_auart_startup(struct uart_port *u)
 	 * Enable fifo so all four bytes of a DMA word are written to
 	 * output (otherwise, only the LSB is written, ie. 1 in 4 bytes)
 	 */
-	writel(AUART_LINECTRL_FEN, u->membase + AUART_LINECTRL_SET);
+	writel(AUART_LINECTRL_FEN, s->regs.linectrl + SET_REG);
 
 	/* get initial status of modem lines */
 	mctrl_gpio_get(s->gpios, &s->mctrl_prev);
@@ -934,12 +954,13 @@ static void mxs_auart_shutdown(struct uart_port *u)
 		mxs_auart_dma_exit(s);
 
 	if (uart_console(u)) {
-		writel(AUART_CTRL2_UARTEN, u->membase + AUART_CTRL2_CLR);
+		writel(AUART_CTRL2_UARTEN, s->regs.ctrl2 + CLR_REG);
+
 		writel(AUART_INTR_RXIEN | AUART_INTR_RTIEN | AUART_INTR_CTSMIEN,
-				u->membase + AUART_INTR_CLR);
-		writel(AUART_CTRL0_CLKGATE, u->membase + AUART_CTRL0_SET);
+				s->regs.intr + CLR_REG);
+		writel(AUART_CTRL0_CLKGATE, s->regs.ctrl0 + SET_REG);
 	} else {
-		mxs_auart_reset_assert(u);
+		mxs_auart_reset_assert(s);
 	}
 
 	clk_disable_unprepare(s->clk);
@@ -947,7 +968,9 @@ static void mxs_auart_shutdown(struct uart_port *u)
 
 static unsigned int mxs_auart_tx_empty(struct uart_port *u)
 {
-	if ((readl(u->membase + AUART_STAT) &
+	struct mxs_auart_port *s = to_auart_port(u);
+
+	if ((readl(s->regs.stat) &
 		 (AUART_STAT_TXFE | AUART_STAT_BUSY)) == AUART_STAT_TXFE)
 		return TIOCSER_TEMT;
 
@@ -959,29 +982,35 @@ static void mxs_auart_start_tx(struct uart_port *u)
 	struct mxs_auart_port *s = to_auart_port(u);
 
 	/* enable transmitter */
-	writel(AUART_CTRL2_TXE, u->membase + AUART_CTRL2_SET);
+	writel(AUART_CTRL2_TXE, s->regs.ctrl2 + SET_REG);
 
 	mxs_auart_tx_chars(s);
 }
 
 static void mxs_auart_stop_tx(struct uart_port *u)
 {
-	writel(AUART_CTRL2_TXE, u->membase + AUART_CTRL2_CLR);
+	struct mxs_auart_port *s = to_auart_port(u);
+
+	writel(AUART_CTRL2_TXE, s->regs.ctrl2 + CLR_REG);
 }
 
 static void mxs_auart_stop_rx(struct uart_port *u)
 {
-	writel(AUART_CTRL2_RXE, u->membase + AUART_CTRL2_CLR);
+	struct mxs_auart_port *s = to_auart_port(u);
+
+	writel(AUART_CTRL2_RXE, s->regs.ctrl2 + CLR_REG);
 }
 
 static void mxs_auart_break_ctl(struct uart_port *u, int ctl)
 {
+	struct mxs_auart_port *s = to_auart_port(u);
+
 	if (ctl)
 		writel(AUART_LINECTRL_BRK,
-			     u->membase + AUART_LINECTRL_SET);
+			     s->regs.linectrl + SET_REG);
 	else
 		writel(AUART_LINECTRL_BRK,
-			     u->membase + AUART_LINECTRL_CLR);
+			     s->regs.linectrl + CLR_REG);
 }
 
 static struct uart_ops mxs_auart_ops = {
@@ -1009,15 +1038,16 @@ static struct mxs_auart_port *auart_port[MXS_AUART_PORTS];
 #ifdef CONFIG_SERIAL_MXS_AUART_CONSOLE
 static void mxs_auart_console_putchar(struct uart_port *port, int ch)
 {
+	struct mxs_auart_port *s = to_auart_port(port);
 	unsigned int to = 1000;
 
-	while (readl(port->membase + AUART_STAT) & AUART_STAT_TXFF) {
+	while (readl(s->regs.stat) & AUART_STAT_TXFF) {
 		if (!to--)
 			break;
 		udelay(1);
 	}
 
-	writel(ch, port->membase + AUART_DATA);
+	writel(ch, s->regs.data);
 }
 
 static void
@@ -1037,18 +1067,18 @@ auart_console_write(struct console *co, const char *str, unsigned int count)
 	clk_enable(s->clk);
 
 	/* First save the CR then disable the interrupts */
-	old_ctrl2 = readl(port->membase + AUART_CTRL2);
-	old_ctrl0 = readl(port->membase + AUART_CTRL0);
+	old_ctrl2 = readl(s->regs.ctrl2);
+	old_ctrl0 = readl(s->regs.ctrl0);
 
 	writel(AUART_CTRL0_CLKGATE,
-		     port->membase + AUART_CTRL0_CLR);
+		     s->regs.ctrl0 + CLR_REG);
 	writel(AUART_CTRL2_UARTEN | AUART_CTRL2_TXE,
-		     port->membase + AUART_CTRL2_SET);
+		     s->regs.ctrl2 + SET_REG);
 
 	uart_console_write(port, str, count, mxs_auart_console_putchar);
 
 	/* Finally, wait for transmitter to become empty ... */
-	while (readl(port->membase + AUART_STAT) & AUART_STAT_BUSY) {
+	while (readl(s->regs.stat) & AUART_STAT_BUSY) {
 		udelay(1);
 		if (!to--)
 			break;
@@ -1060,24 +1090,25 @@ auart_console_write(struct console *co, const char *str, unsigned int count)
 	 * unused, but that is better than to disable it while it is still
 	 * transmitting.
 	 */
-	if (!(readl(port->membase + AUART_STAT) & AUART_STAT_BUSY)) {
-		writel(old_ctrl0, port->membase + AUART_CTRL0);
-		writel(old_ctrl2, port->membase + AUART_CTRL2);
+	if (!(readl(s->regs.stat) & AUART_STAT_BUSY)) {
+		writel(old_ctrl0, s->regs.ctrl0);
+		writel(old_ctrl2, s->regs.ctrl2);
 	}
 
 	clk_disable(s->clk);
 }
 
 static void __init
-auart_console_get_options(struct uart_port *port, int *baud,
+auart_console_get_options(struct mxs_auart_port *s, int *baud,
 			  int *parity, int *bits)
 {
+	struct uart_port *port = &s->port;
 	unsigned int lcr_h, quot;
 
-	if (!(readl(port->membase + AUART_CTRL2) & AUART_CTRL2_UARTEN))
+	if (!(readl(s->regs.ctrl2) & AUART_CTRL2_UARTEN))
 		return;
 
-	lcr_h = readl(port->membase + AUART_LINECTRL);
+	lcr_h = readl(s->regs.linectrl);
 
 	*parity = 'n';
 	if (lcr_h & AUART_LINECTRL_PEN) {
@@ -1092,10 +1123,10 @@ auart_console_get_options(struct uart_port *port, int *baud,
 	else
 		*bits = 8;
 
-	quot = ((readl(port->membase + AUART_LINECTRL)
+	quot = ((readl(s->regs.linectrl)
 			& AUART_LINECTRL_BAUD_DIVINT_MASK))
 			    >> (AUART_LINECTRL_BAUD_DIVINT_SHIFT - 6);
-	quot |= ((readl(port->membase + AUART_LINECTRL)
+	quot |= ((readl(s->regs.linectrl)
 			& AUART_LINECTRL_BAUD_DIVFRAC_MASK))
 				>> AUART_LINECTRL_BAUD_DIVFRAC_SHIFT;
 	if (quot == 0)
@@ -1132,7 +1163,7 @@ auart_console_setup(struct console *co, char *options)
 	if (options)
 		uart_parse_options(options, &baud, &parity, &bits, &flow);
 	else
-		auart_console_get_options(&s->port, &baud, &parity, &bits);
+		auart_console_get_options(s, &baud, &parity, &bits);
 
 	ret = uart_set_options(&s->port, co, baud, parity, bits, flow);
 
@@ -1163,6 +1194,58 @@ static struct uart_driver auart_driver = {
 	.cons =		&auart_console,
 #endif
 };
+
+static void mxs_init_regs(struct mxs_auart_port *s)
+{
+	s->regs.ctrl0	= s->port.membase + AUART_CTRL0;
+	s->regs.ctrl1	= s->port.membase + AUART_CTRL1;
+	s->regs.ctrl2	= s->port.membase + AUART_CTRL2;
+	s->regs.linectrl	= s->port.membase + AUART_LINECTRL;
+
+	if (is_asm9260_auart(s)) {
+		s->regs.intr	= s->port.membase + ASM9260_HW_INTR;
+		s->regs.data	= s->port.membase + ASM9260_HW_DATA;
+		s->regs.stat	= s->port.membase + ASM9260_HW_STAT;
+	} else {
+		s->regs.intr	= s->port.membase + AUART_INTR;
+		s->regs.data	= s->port.membase + AUART_DATA;
+		s->regs.stat	= s->port.membase + AUART_STAT;
+	}
+}
+
+static int mxs_get_dt_clks(struct mxs_auart_port *s,
+			   struct platform_device *pdev)
+{
+	struct device_node *np = pdev->dev.of_node;
+	int clk_idx = 0, err;
+
+	s->clk = of_clk_get(np, clk_idx);
+	if (IS_ERR(s->clk))
+		goto out_err;
+
+	/* configure AHB clock */
+	clk_idx = 1;
+	s->clk_ahb = of_clk_get(np, clk_idx);
+	if (IS_ERR(s->clk_ahb))
+		goto out_err;
+
+	err = clk_prepare_enable(s->clk_ahb);
+	if (err)
+		dev_err(s->dev, "Failed to enable ahb_clk!\n");
+
+	err = clk_set_rate(s->clk, clk_get_rate(s->clk_ahb));
+	if (err)
+		dev_err(s->dev, "Failed to set rate!\n");
+
+	err = clk_prepare_enable(s->clk);
+	if (err)
+		dev_err(s->dev, "Failed to enable clk!\n");
+
+	return 0;
+out_err:
+	dev_err(s->dev, "%s: Failed to get clk (%i)\n", __func__, clk_idx);
+	return 1;
+}
 
 /*
  * This function returns 1 if pdev isn't a device instatiated by dt, 0 if it
@@ -1269,6 +1352,9 @@ static int mxs_auart_probe(struct platform_device *pdev)
 	if (!s)
 		return -ENOMEM;
 
+	s->port.dev = &pdev->dev;
+	s->dev = &pdev->dev;
+
 	ret = serial_mxs_probe_dt(s, pdev);
 	if (ret > 0)
 		s->port.line = pdev->id < 0 ? 0 : pdev->id;
@@ -1280,9 +1366,14 @@ static int mxs_auart_probe(struct platform_device *pdev)
 		s->devtype = pdev->id_entry->driver_data;
 	}
 
-	s->clk = devm_clk_get(&pdev->dev, NULL);
-	if (IS_ERR(s->clk))
-		return PTR_ERR(s->clk);
+	if (is_asm9260_auart(s)) {
+		if (mxs_get_dt_clks(s, pdev))
+			return -ENODEV;
+	} else {
+		s->clk = devm_clk_get(&pdev->dev, NULL);
+		if (IS_ERR(s->clk))
+			return PTR_ERR(s->clk);
+	}
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!r)
@@ -1296,7 +1387,8 @@ static int mxs_auart_probe(struct platform_device *pdev)
 	s->port.fifosize = MXS_AUART_FIFO_SIZE;
 	s->port.uartclk = clk_get_rate(s->clk);
 	s->port.type = PORT_IMX;
-	s->port.dev = s->dev = &pdev->dev;
+
+	mxs_init_regs(s);
 
 	s->mctrl_prev = 0;
 
@@ -1327,16 +1419,21 @@ static int mxs_auart_probe(struct platform_device *pdev)
 
 	auart_port[s->port.line] = s;
 
-	mxs_auart_reset_deassert(&s->port);
+	mxs_auart_reset_deassert(s);
 
 	ret = uart_add_one_port(&auart_driver, &s->port);
 	if (ret)
 		goto out_free_gpio_irq;
 
-	version = readl(s->port.membase + AUART_VERSION);
-	dev_info(&pdev->dev, "Found APPUART %d.%d.%d\n",
-	       (version >> 24) & 0xff,
-	       (version >> 16) & 0xff, version & 0xffff);
+	/* ASM9260 don't have version reg */
+	if (is_asm9260_auart(s)) {
+		dev_info(&pdev->dev, "Found APPUART ASM9260\n");
+	} else {
+		version = readl(s->port.membase + AUART_VERSION);
+		dev_info(&pdev->dev, "Found APPUART %d.%d.%d\n",
+			 (version >> 24) & 0xff,
+			 (version >> 16) & 0xff, version & 0xffff);
+	}
 
 	return 0;
 
