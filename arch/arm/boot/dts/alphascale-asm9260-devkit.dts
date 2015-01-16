@@ -23,34 +23,28 @@
 &nand_controller0 {
 	status = "okay";
 	#address-cells = <1>;
-	#size-cells = <0>;
-	nand-max-chips = <1>;
-
-	nand@0 {
-	reg = <0>;
-	#address-cells = <1>;
 	#size-cells = <1>;
-	nand-on-flash-bbt;
-	nand-ecc-step-size = <512>;
 	nand-ecc-strength = <4>;
+	nand-ecc-step-size = <512>;
+	nand-max-chips = <1>;
+	nand-on-flash-bbt;
 
-		partition@00a00000 {
-			label = "logo";
-			reg = <0x00a00000 0x400000>;
-			/* read-only; */
-		};
-		partition@00e00000 {
-			label = "root";
-			reg = <0x00e00000 0x3C00000>;
-			read-only;
-		};
-		partition@04a00000 {
-			label = "yaffs";
-			reg = <0x04a00000 0x3580000>;
-		};
-		partition@flash {
-			label = "flash";
-			reg = <0x0 0x8000000>;
-		};
+	partition@00a00000 {
+		label = "logo";
+		reg = <0x00a00000 0x400000>;
+		/* read-only; */
+	};
+	partition@00e00000 {
+		label = "root";
+		reg = <0x00e00000 0x3C00000>;
+		read-only;
+	};
+	partition@04a00000 {
+		label = "yaffs";
+		reg = <0x04a00000 0x3580000>;
+	};
+	partition@flash {
+		label = "flash";
+		reg = <0x0 0x8000000>;
 	};
 };
