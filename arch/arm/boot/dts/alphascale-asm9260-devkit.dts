@@ -29,6 +29,9 @@
 	nand-max-chips = <1>;
 	nand-on-flash-bbt;
 
+	pinctrl-names = "default";
+	pinctrl-0 = <&nand_fc0_pins_a>;
+
 	partition@00a00000 {
 		label = "logo";
 		reg = <0x00a00000 0x400000>;
