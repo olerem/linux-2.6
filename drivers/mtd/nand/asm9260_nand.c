@@ -22,6 +22,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/of_mtd.h>
+#include <linux/pinctrl/consumer.h>
 
 #define ASM9260_ECC_STEP		512
 #define ASM9260_ECC_MAX_BIT		16
@@ -910,6 +911,7 @@ static int __init asm9260_nand_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct mtd_part_parser_data ppdata;
 	struct resource *r;
+	struct pinctrl *p;
 	int ret;
 	unsigned int irq;
 	u32 val;
@@ -964,6 +966,10 @@ static int __init asm9260_nand_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "FIXME: This driver was designed and tested only with one chip HW. If you have dual chip HW pleas contact author of this driver or add support by your self.\n");
 		return -ENODEV;
 	}
+
+	p = devm_pinctrl_get_select_default(&pdev->dev);
+	if (IS_ERR(p))
+		dev_warn(&pdev->dev, "pins are not configured\n");
 
 	ret = nand_scan_ident(mtd, val, NULL);
 	if (ret) {
