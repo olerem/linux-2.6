@@ -20,6 +20,10 @@
 	status = "okay";
 };
 
+&ethernet0 {
+	status = "okay";
+};
+
 &nand_controller0 {
 	status = "okay";
 	#address-cells = <1>;
