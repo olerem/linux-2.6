@@ -22,6 +22,14 @@
 
 &ethernet0 {
 	status = "okay";
+	local-mac-address = [00 00 de ad be ef];
+	max-speed = "100";
+	phy-mode = "rmii";
+
+	phy1: ethernet-phy@1 {
+		reg = <1>;
+		micrel,led-mode = <1>;
+	};
 };
 
 &nand_controller0 {
