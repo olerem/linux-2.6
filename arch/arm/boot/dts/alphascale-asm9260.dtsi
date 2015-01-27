@@ -174,7 +174,7 @@
 
 		ethernet0: dwmac@80500000 {
 			device_type 	= "network";
-			compatible	= "st,stih415-dwmac", "snps,dwmac", "snps,dwmac-3.610";
+			compatible	= "snps,dwmac", "snps,dwmac-3.610";
 			status 		= "disabled";
 
 			reg 		= <0x80500000 0x8000>, <0x148 0x4>;
