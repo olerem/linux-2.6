@@ -39,6 +39,65 @@
 		compatible = "simple-bus";
 		ranges;
 
+		gpio0: gpio@0x50000000 {
+			gpio-controller;
+			compatible = "alphascale,asm9260-gpio";
+			reg = <0x50000000 0x8100>;
+			clocks = <&acc CLKID_AHB_GPIO>;
+			clock-names = "ahb";
+			interrupts = <3>;
+			gpio-ranges = <&pinctrl 0 120 5>,
+				      <&pinctrl 8 128 20>;
+		};
+
+		gpio1: gpio@0x50010000 {
+			gpio-controller;
+			compatible = "alphascale,asm9260-gpio";
+			reg = <0x50010000 0x8100>;
+			clocks = <&acc CLKID_AHB_GPIO>;
+			clock-names = "ahb";
+			interrupts = <4>;
+			gpio-ranges = <&pinctrl 0 151 8>,
+				      <&pinctrl 8 169 5>;
+		};
+
+		gpio2: gpio@0x50020000 {
+			gpio-controller;
+			compatible = "alphascale,asm9260-gpio";
+			reg = <0x50020000 0x8100>;
+			clocks = <&acc CLKID_AHB_GPIO>;
+			clock-names = "ahb";
+			interrupts = <5>;
+			gpio-ranges = <&pinctrl 1 51 7>,
+				      <&pinctrl 8 45 6>,
+				      <&pinctrl 16 4 16>;
+		};
+
+		gpio3: gpio@0x50030000 {
+			gpio-controller;
+			compatible = "alphascale,asm9260-gpio";
+			reg = <0x50030000 0x8100>;
+			clocks = <&acc CLKID_AHB_GPIO>;
+			clock-names = "ahb";
+			interrupts = <6>;
+			gpio-ranges = <&pinctrl 0 23 8>,
+				      <&pinctrl 8 31 4>,
+				      <&pinctrl 16 38 6>,
+				      <&pinctrl 24 44 1>,
+				      <&pinctrl 25 61 7>;
+		};
+
+		gpio4: gpio@0x50040000 {
+			gpio-controller;
+			compatible = "alphascale,asm9260-gpio";
+			reg = <0x50040000 0x8100>;
+			clocks = <&acc CLKID_AHB_GPIO>;
+			clock-names = "ahb";
+			interrupts = <7>;
+			gpio-ranges = <&pinctrl 0 73 16>;
+		};
+
+
 		acc: clock-controller@80040000 {
 			compatible = "alphascale,asm9260-clock-controller";
 			#clock-cells = <1>;
