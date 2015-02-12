@@ -402,4 +402,4 @@ module_platform_driver(asm9260_rtc_driver);
 
 MODULE_AUTHOR("Oleksij Rempel <linux@rempel-privat.de>");
 MODULE_DESCRIPTION("Alphascale asm9260 SoC Realtime Clock Driver (RTC)");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
