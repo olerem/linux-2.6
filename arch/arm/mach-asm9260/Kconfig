@@ -5,5 +5,6 @@ config MACH_ASM9260
 	select CPU_ARM926T
 	select ASM9260_TIMER
 	select GENERIC_CLOCKEVENTS
+	select ARCH_HAS_RESET_CONTROLLER
 	help
 	  Support for Alphascale ASM9260 based platform.
