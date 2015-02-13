@@ -1,0 +1,20 @@
+Alphascale asm9260Peripheral Reset Controller
+===========================================
+
+Please also refer to reset.txt in this directory for common reset
+controller binding usage.
+
+Required properties:
+- compatible: Should be one of the following:
+  "alphasclae,asm9260-reset"
+- reg: should be register base and length as documented in the
+  datasheet
+- #reset-cells: 1, see below
+
+example:
+
+rst: reset@80040000 {
+	compatible = "alphascale,asm9260-reset";
+	#reset-cells = <1>;
+	reg = <0x80040000 0x20>;
+};
