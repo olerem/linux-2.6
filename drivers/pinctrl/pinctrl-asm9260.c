@@ -530,12 +530,27 @@ found_mux:
 	return 0;
 }
 
+static int asm9260_gpio_request_enable(struct pinctrl_dev *pctrldev,
+		struct pinctrl_gpio_range *range, unsigned pin)
+{
+	struct asm9260_pingroup *table;
+	int a;
+
+	for (a = 0; a < MUX_TABLE_SIZE; a++) {
+		table = &asm9260_mux_table[a];
+		if (table->number == pin)
+			break;
+	}
+
+	return asm9260_pinctrl_set_mux(pctrldev, ASM9260_MUX_gpio0, a);
+}
+
 static struct pinmux_ops asm9260_pinmux_ops = {
 	.get_functions_count	= asm9260_pinctrl_get_funcs_count,
 	.get_function_name	= asm9260_pinctrl_get_func_name,
 	.get_function_groups	= asm9260_pinctrl_get_func_groups,
 	.set_mux		= asm9260_pinctrl_set_mux,
-	/* TODO: should we care about gpios here? gpio_request_enable? */
+	.gpio_request_enable	= asm9260_gpio_request_enable,
 };
 
 static int asm9260_pinconf_reg(struct pinctrl_dev *pctldev,
