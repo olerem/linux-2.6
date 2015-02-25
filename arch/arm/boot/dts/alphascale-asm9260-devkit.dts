@@ -17,6 +17,14 @@
 
 	soc {
 		pinctrl: pinctrl@80044000 {
+			uart4_pins_a: uart4_pins0 {
+				uart4_txrx_pins {
+					pins = "GPIO3_0", "GPIO3_1";
+					function = "uart4";
+					bias-disable;
+				};
+			};
+
 			nand_fc0_pins_a: nand_fc0 {
 				nand_main_gr {
 					pins = "GPIO11_0", "GPIO11_1", "GPIO11_2",
@@ -52,6 +60,15 @@
 					bias-disable;
 				};
 			};
+
+			spi_pins_a: spi_pins0 {
+				qspi_out_pins {
+					pins = "GPIO4_0", "GPIO4_1", "GPIO4_2",
+					       "GPIO4_3", "GPIO4_4", "GPIO4_5";
+					function = "gpio0";
+					bias-disable;
+				};
+			};
 		};
 
 		leds {
@@ -68,6 +85,8 @@
 
 		uart4: serial@80010000 {
 			status = "okay";
+			pinctrl-names 	= "default";
+			pinctrl-0	= <&uart4_pins_a>;
 		};
 
 		ethernet0: dwmac@80500000 {
@@ -133,6 +152,29 @@
 			partition@flash {
 				label = "flash";
 				reg = <0x0 0x7f80000>;
+			};
+		};
+
+		spi3 {
+			compatible = "spi-gpio";
+			status = "okay";
+			gpio-sck = <&gpio_ctrl1 0 0>;
+			gpio-mosi = <&gpio_ctrl1 2 0>;
+			gpio-miso = <&gpio_ctrl1 3 0>;
+			cs-gpios = <&gpio_ctrl1 1 0>;
+			num-chipselects = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			pinctrl-names 	= "default";
+			pinctrl-0	= <&spi_pins_a>;
+
+			flash: s25sl032p@0 {
+				compatible = "spansion,s25sl032p";
+				#address-cells = <1>;
+				#size-cells = <1>;
+				reg = <0>;
+				spi-max-frequency = <1000000>;
 			};
 		};
 	};
