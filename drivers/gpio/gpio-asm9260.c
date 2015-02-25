@@ -69,7 +69,7 @@ static int asm9260_gpio_direction_input(struct gpio_chip *chip, unsigned offset)
 {
 	struct asm9260_gpio_priv *priv = to_asm9260_gpio(chip);
 
-	iowrite32(1 << offset, priv->iobase + HW_DIR + SET_REG);
+	iowrite32(1 << offset, priv->iobase + HW_DIR + CLR_REG);
 	return 0;
 }
 
