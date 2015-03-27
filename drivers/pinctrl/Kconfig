@@ -45,6 +45,14 @@ config PINCTRL_AS3722
 	  open drain configuration for the GPIO pins of AS3722 devices. It also
 	  supports the GPIO functionality through gpiolib.
 
+config PINCTRL_ASM9260
+	bool "Pinctrl driver for Alphascale asm9260"
+	depends on MACH_ASM9260
+	select PINMUX
+	select GENERIC_PINCONF
+	help
+	  Say Y here to enable the Alphascale asm9260 pinctrl driver
+
 config PINCTRL_BF54x
 	def_bool y if BF54x
 	select PINCTRL_ADI2
