@@ -1,16 +1,12 @@
 /*
- * Ingenic JZ4740 "glue layer"
+ * Alphascale asm9260 "glue layer"
  *
- * Copyright (C) 2013, Apelete Seketeli <apelete@seketeli.net>
+ * Copyright (C) 2015, Oleksij Rempel <linux@rempel-privat.de>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
 #include <linux/clk.h>
@@ -23,13 +19,13 @@
 
 #include "musb_core.h"
 
-struct jz4740_glue {
+struct asm9260_glue {
 	struct device           *dev;
 	struct platform_device  *musb;
 	struct clk		*clk;
 };
 
-static irqreturn_t jz4740_musb_interrupt(int irq, void *__hci)
+static irqreturn_t asm9260_musb_interrupt(int irq, void *__hci)
 {
 	unsigned long   flags;
 	irqreturn_t     retval = IRQ_NONE;
@@ -57,29 +53,29 @@ static irqreturn_t jz4740_musb_interrupt(int irq, void *__hci)
 	return retval;
 }
 
-static struct musb_fifo_cfg jz4740_musb_fifo_cfg[] = {
+static struct musb_fifo_cfg asm9260_musb_fifo_cfg[] = {
 { .hw_ep_num = 1, .style = FIFO_TX, .maxpacket = 512, },
 { .hw_ep_num = 1, .style = FIFO_RX, .maxpacket = 512, },
 { .hw_ep_num = 2, .style = FIFO_TX, .maxpacket = 64, },
 };
 
-static struct musb_hdrc_config jz4740_musb_config = {
+static struct musb_hdrc_config asm9260_musb_config = {
 	/* Silicon does not implement USB OTG. */
 	.multipoint = 0,
 	/* Max EPs scanned, driver will decide which EP can be used. */
 	.num_eps    = 4,
 	/* RAMbits needed to configure EPs from table */
 	.ram_bits   = 9,
-	.fifo_cfg = jz4740_musb_fifo_cfg,
-	.fifo_cfg_size = ARRAY_SIZE(jz4740_musb_fifo_cfg),
+	.fifo_cfg = asm9260_musb_fifo_cfg,
+	.fifo_cfg_size = ARRAY_SIZE(asm9260_musb_fifo_cfg),
 };
 
-static struct musb_hdrc_platform_data jz4740_musb_platform_data = {
+static struct musb_hdrc_platform_data asm9260_musb_platform_data = {
 	.mode   = MUSB_PERIPHERAL,
-	.config = &jz4740_musb_config,
+	.config = &asm9260_musb_config,
 };
 
-static int jz4740_musb_init(struct musb *musb)
+static int asm9260_musb_init(struct musb *musb)
 {
 	usb_phy_generic_register();
 	musb->xceiv = usb_get_phy(USB_PHY_TYPE_USB2);
@@ -93,30 +89,30 @@ static int jz4740_musb_init(struct musb *musb)
 	 */
 	musb->dyn_fifo = true;
 
-	musb->isr = jz4740_musb_interrupt;
+	musb->isr = asm9260_musb_interrupt;
 
 	return 0;
 }
 
-static int jz4740_musb_exit(struct musb *musb)
+static int asm9260_musb_exit(struct musb *musb)
 {
 	usb_put_phy(musb->xceiv);
 
 	return 0;
 }
 
-static const struct musb_platform_ops jz4740_musb_ops = {
+static const struct musb_platform_ops asm9260_musb_ops = {
 	.quirks		= MUSB_INDEXED_EP,
 	.fifo_mode	= 2,
-	.init		= jz4740_musb_init,
-	.exit		= jz4740_musb_exit,
+	.init		= asm9260_musb_init,
+	.exit		= asm9260_musb_exit,
 };
 
-static int jz4740_probe(struct platform_device *pdev)
+static int asm9260_probe(struct platform_device *pdev)
 {
-	struct musb_hdrc_platform_data	*pdata = &jz4740_musb_platform_data;
+	struct musb_hdrc_platform_data	*pdata = &asm9260_musb_platform_data;
 	struct platform_device		*musb;
-	struct jz4740_glue		*glue;
+	struct asm9260_glue		*glue;
 	struct clk                      *clk;
 	int				ret;
 
@@ -149,7 +145,7 @@ static int jz4740_probe(struct platform_device *pdev)
 	glue->musb			= musb;
 	glue->clk			= clk;
 
-	pdata->platform_ops		= &jz4740_musb_ops;
+	pdata->platform_ops		= &asm9260_musb_ops;
 
 	platform_set_drvdata(pdev, glue);
 
@@ -181,9 +177,9 @@ err_platform_device_put:
 	return ret;
 }
 
-static int jz4740_remove(struct platform_device *pdev)
+static int asm9260_remove(struct platform_device *pdev)
 {
-	struct jz4740_glue	*glue = platform_get_drvdata(pdev);
+	struct asm9260_glue	*glue = platform_get_drvdata(pdev);
 
 	platform_device_unregister(glue->musb);
 	usb_phy_generic_unregister(pdev);
@@ -192,15 +188,15 @@ static int jz4740_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct platform_driver jz4740_driver = {
-	.probe		= jz4740_probe,
-	.remove		= jz4740_remove,
+static struct platform_driver asm9260_driver = {
+	.probe		= asm9260_probe,
+	.remove		= asm9260_remove,
 	.driver		= {
-		.name	= "musb-jz4740",
+		.name	= "musb-asm9260",
 	},
 };
 
-MODULE_DESCRIPTION("JZ4740 MUSB Glue Layer");
-MODULE_AUTHOR("Apelete Seketeli <apelete@seketeli.net>");
-MODULE_LICENSE("GPL v2");
-module_platform_driver(jz4740_driver);
+MODULE_DESCRIPTION("ASM9260 MUSB Glue Layer");
+MODULE_AUTHOR("Oleksij Rempel <linux@rempel-privat.de>");
+MODULE_LICENSE("GPL");
+module_platform_driver(asm9260_driver);
