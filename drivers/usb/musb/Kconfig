@@ -71,6 +71,11 @@ config USB_MUSB_SUNXI
 	depends on GENERIC_PHY
 	select SUNXI_SRAM
 
+config USB_MUSB_ASM9260
+	tristate "Alphascale asm9260"
+	depends on MACH_ASM9260
+	depends on OF_IRQ
+
 config USB_MUSB_DAVINCI
 	tristate "DaVinci"
 	depends on ARCH_DAVINCI_DMx
