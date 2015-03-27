@@ -188,6 +188,14 @@ static int asm9260_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct of_device_id asm9260_id_table[] = {
+	{
+		.compatible = "alpascale,asm9260-musb"
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(of, asm9260_id_table);
+
 static struct platform_driver asm9260_driver = {
 	.probe		= asm9260_probe,
 	.remove		= asm9260_remove,
