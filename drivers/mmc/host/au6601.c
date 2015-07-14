@@ -32,6 +32,7 @@
 
 #define MHZ_TO_HZ(freq)	((freq) * 1000 * 1000)
 
+#define AU6601_BASE_CLOCK		MHZ_TO_HZ(31)
 #define AU6601_MIN_CLOCK		(150 * 1000)
 #define AU6601_MAX_CLOCK		MHZ_TO_HZ(208)
 #define AU6601_MAX_SEGMENTS		512
@@ -76,6 +77,17 @@
 #define REG_70	0x70
 /* PLL ctrl */
 #define AU6601_REG_PLL_CTRL	0x72
+ #define AU6601_PLL_DIV8_MASK	0xff
+ #define AU6601_PLL_DIV4_MASK	0xf
+ #define AU6601_PLL_DIV_S	8
+ #define AU6601_PLL_MOD4	0xb	/* x 13,5 */
+ #define AU6601_PLL_MOD3	0x3	/* x 12,5 */
+ #define AU6601_PLL_MOD2	0x2	/* x 4	  */
+ #define AU6601_PLL_MOD1	0x1	/* x 1,5  */
+ #define AU6601_PLL_MOD0	0x0	/* x 1	  */
+ #define AU6601_PLL_MOD_S	4
+ #define AU6601_PLL_EN		BIT(0)
+
 /* ??? */
 #define REG_74	0x74
 /* ??? */
@@ -166,7 +178,12 @@
 		AU6601_INT_DATA_END_BIT)
  #define AU6601_INT_ALL_MASK	((uint32_t)-1)
 
-bool disable_dma = 0;
+struct au6601_pll_conf {
+	unsigned int ratio;
+	unsigned int mod;
+	unsigned int max_div;
+	unsigned int min_div;
+};
 
 struct au6601_host {
 	struct pci_dev *pdev;
@@ -196,6 +213,16 @@ struct au6601_host {
 	int sg_count;	   /* Mapped sg entries */
 };
 
+static bool disable_dma;
+
+static const struct au6601_pll_conf au6601_pll_cfg[] = {
+	{10,	0x0,	0x1ff,	1},
+	{15,	0x1,	0x1ff,	1},
+	{40,	0x2,	0xf,	1},
+	{125,	0x3,	0xf,	2},
+	{135,	0xb,	0xf,	2},
+};
+
 static void au6601_send_cmd(struct au6601_host *host,
 			    struct mmc_command *cmd);
 
@@ -211,7 +238,7 @@ static const struct pci_device_id pci_ids[] = {
 		.subvendor      = PCI_ANY_ID,
 		.subdevice      = PCI_ANY_ID,
 	},
-	{ /* end: all zeroes */ },
+	{ },
 };
 MODULE_DEVICE_TABLE(pci, pci_ids);
 
@@ -553,7 +580,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 		return;
 
 	/* Sanity checks */
-	BUG_ON(data->blksz * data->blocks > 524288);
+	//BUG_ON(data->blksz * data->blocks > 524288);
 	BUG_ON(data->blksz > host->mmc->max_blk_size);
 	BUG_ON(data->blocks > AU6601_MAX_BLOCK_COUNT);
 
@@ -585,7 +612,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 static void au6601_send_cmd(struct au6601_host *host,
 			    struct mmc_command *cmd)
 {
-	u8 ctrl; /*some mysterious flags and control */
+	u8 ctrl; /* some mysterious flags and control */
 	unsigned long timeout;
 
 	timeout = jiffies;
@@ -816,60 +843,54 @@ static void au6601_sdc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	mutex_unlock(&host->cmd_mutex);
 }
 
+static unsigned int au6601_calc_div(unsigned int clock, unsigned int clock_mod,
+		 const struct au6601_pll_conf *cfg)
+{
+	unsigned int tmp;
+
+	tmp = DIV_ROUND_UP(clock_mod, clock);
+	if (tmp > cfg->max_div)
+		tmp = cfg->max_div;
+	else if (tmp < cfg->min_div)
+		tmp = cfg->min_div;
+
+	return tmp;
+}
+
 static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 {
-	unsigned int div = 0, mult = 0, ctrl = 0x1;
+	unsigned int clock_out = 0, div = 0, mod = 0, ctrl = AU6601_PLL_EN;
+	//int i, diff = MAX_INT;
+	int i, diff = 0x7fffffff;
 
-	/* FIXME: mesuered and calculated values are different.
-	 * the clock is unstable in some mult/div combinations.
-	 */
-	if (clock >= MHZ_TO_HZ(208)) {
-		mult = 0xb0;	/* 30 * ? / 2 = ?MHz */
-		div = 2;
-	} else if (clock >= MHZ_TO_HZ(194)) {
-		mult = 0x30;	/* 30 * 14 / 2 = 210MHz */
-		div = 2;
-	} else if (clock >= MHZ_TO_HZ(130)) {
-		mult = 0x30;	/* 30 * 14 / 3 = 140MHz */
-		div = 3;
-	} else if (clock >= MHZ_TO_HZ(100)) {
-		mult = 0x30;	/* 30 * 14 / 4 = 105MHz */
-		div = 4;
-	} else if (clock >= MHZ_TO_HZ(80)) {
-		mult = 0x30;	/* 30 * 14 / 5 = 84MHz */
-		div = 5;
-	} else if (clock >= MHZ_TO_HZ(60)) {
-		mult = 0x30;	/* 30 * 14 / 7 = 60MHz */
-		div = 7;
-	} else if (clock >= MHZ_TO_HZ(50)) {
-		mult = 0x10;	/* 30 * 2 / 1 = 60MHz */
-		div = 1;
-	} else if (clock >= MHZ_TO_HZ(40)) {
-		mult = 0x30;	/* 30 * 14 / 10 = 42MHz */
-		div = 10;
-	} else if (clock >= MHZ_TO_HZ(25)) {
-		mult = 0x10;	/* 30 * 2 / 2 = 30MHz */
-		div = 2;
-	} else if (clock >= MHZ_TO_HZ(20)) {
-		mult = 0x20;	/* 30 * 4 / 7 = 17MHz */
-		div = 7;
-	} else if (clock >= MHZ_TO_HZ(10)) {
-		mult = 0x10;	/* 30 * 2 / 5 = 12MHz */
-		div = 5;
-	} else if (clock >= MHZ_TO_HZ(5)) {
-		mult = 0x10;	/* 30 * 2 / 10 = 6MHz */
-		div = 10;
-	} else if (clock >= MHZ_TO_HZ(1)) {
-		mult = 0x0;	/* 30 / 16 = 1,8 MHz */
-		div = 16;
-	} else if (clock == 0) {
-		ctrl = 0;
-	} else {
-		mult = 0x0;	/* reversed 150 * 200 = 30MHz */
-		div = 200;	/* 150 KHZ mesured */
+	if (clock == 0) {
+		ctrl &= ~AU6601_PLL_EN;
+		goto done;
 	}
-	dev_dbg(host->dev, "set freq %d, %x, %x\n", clock, div, mult);
-	iowrite16((div - 1) << 8 | mult | ctrl,
+
+	for (i = 0; i < ARRAY_SIZE(au6601_pll_cfg); i++) {
+		int tmp_diff, tmp_clock, tmp_div, tmp_clock_mult;
+		const struct au6601_pll_conf *cfg = &au6601_pll_cfg[i];
+
+		tmp_clock_mult = cfg->ratio * (AU6601_BASE_CLOCK / 10);
+		tmp_div = au6601_calc_div(clock, tmp_clock_mult, cfg);
+		tmp_clock = DIV_ROUND_UP(tmp_clock_mult, tmp_div);
+		tmp_diff = clock - tmp_clock;
+
+		if (tmp_diff >= 0 && tmp_diff < diff) {
+			diff = tmp_diff;
+			mod = cfg->mod;
+			div = tmp_div;
+			clock_out = tmp_clock;
+		}
+	}
+
+done:
+	dev_dbg(host->dev, "set freq %d, use freq %d, %d, %x\n",
+		clock, clock_out, div, mod);
+
+	iowrite16((div - 1) << AU6601_PLL_DIV_S
+		  | mod << AU6601_PLL_MOD_S | ctrl,
 		  host->iobase + AU6601_REG_PLL_CTRL);
 }
 
@@ -1008,7 +1029,8 @@ static void au6601_init_mmc(struct au6601_host *host)
 	mmc->f_min = AU6601_MIN_CLOCK;
 	mmc->f_max = AU6601_MAX_CLOCK;
 	mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
-	mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SD_HIGHSPEED | MMC_CAP_WAIT_WHILE_BUSY;
+	mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SD_HIGHSPEED
+		  | MMC_CAP_WAIT_WHILE_BUSY;
 	mmc->ops = &au6601_sdc_ops;
 
 	/* Hardware cannot do scatter lists? */
@@ -1063,7 +1085,8 @@ static int __init au6601_dma_alloc(struct au6601_host *host)
 	}
 
 	host->virt_base = dmam_alloc_coherent(host->dev,
-		AU6601_MAX_BLOCK_LENGTH * AU6601_MAX_DMA_BLOCKS * AU6601_DMA_LOCAL_SEGMENTS,
+		AU6601_MAX_BLOCK_LENGTH * AU6601_MAX_DMA_BLOCKS
+		* AU6601_DMA_LOCAL_SEGMENTS,
 		&host->phys_base, GFP_KERNEL);
 
 	if (!host->virt_base) {
