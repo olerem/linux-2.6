@@ -126,7 +126,11 @@
  #define AU6601_BUS_STAT_DAT1		BIT(1)
  #define AU6601_BUS_STAT_DAT0		BIT(0)
  #define AU6601_BUS_STAT_DAT_MASK	0xf
+
 #define REG_85	0x85
+ #define AU6601_REG_85_CLK_OFF		BIT(2)
+ #define AU6601_REG_85_CLK_DIV2		BIT(1)
+ #define AU6601_REG_85_VDD_180		BIT(0)
 /* ??? */
 #define REG_86	0x86
 #define AU6601_REG_INT_STATUS	0x90 /* IRQ intmask */
@@ -941,6 +945,25 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	mutex_unlock(&host->cmd_mutex);
 }
 
+static int au6601_signal_voltage_switch(struct mmc_host *mmc,
+        struct mmc_ios *ios)
+{
+	struct au6601_host *host = mmc_priv(mmc);
+
+	switch (ios->signal_voltage) {
+	case MMC_SIGNAL_VOLTAGE_330:
+		au6601_rmw(host->iobase + REG_85, AU6601_REG_85_VDD_180, 0);
+		break;
+	case MMC_SIGNAL_VOLTAGE_180:
+		au6601_rmw(host->iobase + REG_85, 0, AU6601_REG_85_VDD_180);
+		break;
+	default:
+		/* No signal voltage switch required */
+		return 0;
+	}
+	return 0;
+}
+
 static int au6601_ops_card_busy(struct mmc_host *mmc)
 {
 	struct au6601_host *host = mmc_priv(mmc);
@@ -951,6 +974,7 @@ static int au6601_ops_card_busy(struct mmc_host *mmc)
 static const struct mmc_host_ops au6601_sdc_ops = {
 	.request	= au6601_sdc_request,
 	.set_ios	= au6601_sdc_set_ios,
+	.start_signal_voltage_switch = au6601_signal_voltage_switch,
 
 	.card_busy	= au6601_ops_card_busy,
 };
@@ -1028,7 +1052,8 @@ static void au6601_init_mmc(struct au6601_host *host)
 
 	mmc->f_min = AU6601_MIN_CLOCK;
 	mmc->f_max = AU6601_MAX_CLOCK;
-	mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
+	/* mesured Vdd: 3.4 and 1.8 */
+	mmc->ocr_avail = MMC_VDD_165_195 | MMC_VDD_32_33 | MMC_VDD_33_34;
 	mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SD_HIGHSPEED
 		  | MMC_CAP_WAIT_WHILE_BUSY;
 	mmc->ops = &au6601_sdc_ops;
