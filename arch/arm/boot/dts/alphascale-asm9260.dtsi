@@ -217,6 +217,10 @@
 			clocks = <&acc CLKID_SYS_WDT>, <&acc CLKID_AHB_WDT>;
 			clock-names = "mod", "ahb";
 			interrupts = <55>;
+			resets = <&rst WDT_RESET>;
+			reset-names = "wdt_rst";
+			alphascale,mode = "hw";
+			timeout-sec = <20>;
 		};
 
 		timer0: timer@80088000 {
