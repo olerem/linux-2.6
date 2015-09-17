@@ -443,7 +443,8 @@ static void mxs_auart_set_mctrl(struct uart_port *u, unsigned mctrl)
 
 	writel(ctrl, s->regs.ctrl2);
 
-	mctrl_gpio_set(s->gpios, mctrl);
+	if (!is_asm9260_auart(s))
+		mctrl_gpio_set(s->gpios, mctrl);
 }
 
 #define MCTRL_ANY_DELTA        (TIOCM_RI | TIOCM_DSR | TIOCM_CD | TIOCM_CTS)
@@ -847,6 +848,7 @@ static irqreturn_t mxs_auart_irq_handle(int irq, void *context)
 		mxs_auart_modem_status(s,
 				mctrl_gpio_get(s->gpios, &mctrl_temp));
 
+#if 0
 	if (istat & AUART_INTR_CTSMIS) {
 		if (CTS_AT_AUART() && s->ms_irq_enabled)
 			uart_handle_cts_change(&s->port,
@@ -855,6 +857,7 @@ static irqreturn_t mxs_auart_irq_handle(int irq, void *context)
 				s->regs.intr + CLR_REG);
 		istat &= ~AUART_INTR_CTSMIS;
 	}
+#endif
 
 	if (istat & (AUART_INTR_RTIS | AUART_INTR_RXIS)) {
 		if (!auart_dma_enabled(s))
@@ -907,7 +910,7 @@ static void mxs_auart_reset_assert(struct mxs_auart_port *s)
 		udelay(10);
 	}
 
-	dev_err(u->dev, "Failed to reset the unit.");
+	dev_err(s->dev, "Failed to reset the unit.");
 }
 
 static int mxs_auart_startup(struct uart_port *u)
@@ -942,7 +945,7 @@ static int mxs_auart_startup(struct uart_port *u)
 	writel(AUART_LINECTRL_FEN, s->regs.linectrl + SET_REG);
 
 	/* get initial status of modem lines */
-	mctrl_gpio_get(s->gpios, &s->mctrl_prev);
+	//mctrl_gpio_get(s->gpios, &s->mctrl_prev);
 
 	s->ms_irq_enabled = false;
 	return 0;
@@ -1413,7 +1416,7 @@ static int mxs_auart_probe(struct platform_device *pdev)
 		return irq;
 
 	s->port.irq = irq;
-	ret = devm_request_threaded_irq(s->dev, s->irq, NULL,
+	ret = devm_request_threaded_irq(s->dev, irq, NULL,
 			mxs_auart_irq_handle, IRQF_ONESHOT,
 			dev_name(&pdev->dev), s);
 	if (ret)
