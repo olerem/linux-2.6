@@ -570,7 +570,7 @@ static void asm9260_nand_write_buf(struct mtd_info *mtd,
 
 static int asm9260_nand_write_page_raw(struct mtd_info *mtd,
 		struct nand_chip *chip, const u8 *buf,
-		int oob_required)
+		int oob_required, int page)
 {
 	struct asm9260_nand_priv *priv = mtd_to_priv(mtd);
 
@@ -583,12 +583,12 @@ static int asm9260_nand_write_page_raw(struct mtd_info *mtd,
 
 static int asm9260_nand_write_page_hwecc(struct mtd_info *mtd,
 		struct nand_chip *chip, const u8 *buf,
-		int oob_required)
+		int oob_required, int page)
 {
 	struct asm9260_nand_priv *priv = mtd_to_priv(mtd);
 
 	asm9260_reg_update_bits(priv, HW_CTRL, BM_CTRL_ECC_EN, 0);
-	chip->ecc.write_page_raw(mtd, chip, buf, oob_required);
+	chip->ecc.write_page_raw(mtd, chip, buf, oob_required, page);
 
 	return 0;
 }
