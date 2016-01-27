@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
+#include <linux/mtd/mtd.h>
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
 #include <linux/clk.h>
@@ -241,6 +242,12 @@ static void asm9260_select_chip(struct mtd_info *mtd, int chip)
 		iowrite32(BM_MEM_CTRL_UNWPn(chip) | BM_MEM_CTRL_CEn(chip),
 			  priv->base + HW_MEM_CTRL);
 	}
+}
+
+static void asm9260_cmd_ctrl(struct mtd_info *mtd, int cmd,
+			     unsigned int ctrl)
+{
+
 }
 
 /* 3 commands are supported by HW. 3-d can be used for TWO PLANE. */
@@ -666,6 +673,7 @@ static irqreturn_t asm9260_nand_irq(int irq, void *device_info)
 static void __init asm9260_nand_init_chip(struct nand_chip *nand_chip)
 {
 	nand_chip->select_chip	= asm9260_select_chip;
+	nand_chip->cmd_ctrl	= asm9260_cmd_ctrl;
 	nand_chip->cmdfunc	= asm9260_nand_command_lp;
 	nand_chip->read_byte	= asm9260_nand_read_byte;
 	nand_chip->read_word	= asm9260_nand_read_word;
@@ -909,7 +917,6 @@ static int __init asm9260_nand_probe(struct platform_device *pdev)
 	struct nand_chip *nand;
 	struct mtd_info *mtd;
 	struct device_node *np = pdev->dev.of_node;
-	struct mtd_part_parser_data ppdata;
 	struct resource *r;
 	struct pinctrl *p;
 	int ret;
@@ -951,6 +958,7 @@ static int __init asm9260_nand_probe(struct platform_device *pdev)
 				dev_name(&pdev->dev), priv);
 
 	asm9260_nand_init_chip(nand);
+	nand_set_flash_node(nand, np);
 
 	ret = of_property_read_u32(np, "nand-max-chips", &val);
 	if (ret)
@@ -1014,8 +1022,7 @@ static int __init asm9260_nand_probe(struct platform_device *pdev)
 	}
 
 
-	ppdata.of_node = np;
-	ret = mtd_device_parse_register(mtd, NULL, &ppdata, NULL, 0);
+	ret = mtd_device_register(mtd, NULL, 0);
 
 	return ret;
 }
