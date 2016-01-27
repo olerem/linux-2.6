@@ -94,8 +94,6 @@
 #define BM_CALVAL_M		0x1ffff
 
 /* General purpose registers */
-/* We can use one of this registers to detect if battery was removed/off
- * so far we in */
 #define HW_GPREG0		0x44
 #define BM_GPREG0_MAGIC		0x12345678
 
@@ -135,6 +133,7 @@ struct asm9260_rtc_priv {
 	void __iomem		*iobase;
 	struct rtc_device	*rtc;
 	struct clk		*clk;
+	/* io lock */
 	spinlock_t		lock;
 };
 
@@ -279,7 +278,7 @@ static const struct rtc_class_ops asm9260_rtc_ops = {
 
 static void __init asm9260_rtc_init(struct asm9260_rtc_priv *priv)
 {
-	dev_info(priv->dev, "Reseting clock\n");
+	dev_info(priv->dev, "Resetting clock\n");
 
 	iowrite32(BM_CTCRST, priv->iobase + HW_CCR);
 
@@ -298,23 +297,17 @@ static int __init asm9260_rtc_start(struct asm9260_rtc_priv *priv)
 
 	ccr = ioread32(priv->iobase + HW_CCR);
 
-	if ((ccr & (BM_CLKEN | BM_CTCRST)) != BM_CLKEN) {
-		dev_info(priv->dev, "Not enabled.\n");
+	if ((ccr & (BM_CLKEN | BM_CTCRST)) != BM_CLKEN)
 		asm9260_rtc_init(priv);
-	} else if (ioread32(priv->iobase + HW_GPREG0) != BM_GPREG0_MAGIC) {
-		dev_info(priv->dev, "Magic not found.\n");
-		asm9260_rtc_init(priv);
-	} else
-		dev_info(priv->dev, "Ticking clock found.\n");
 
 	iowrite32(0, priv->iobase + HW_CIIR);
 	iowrite32(BM_AMR_OFF, priv->iobase + HW_AMR);
 
 	/* FIXME: need to configure calibration? */
 
-	if (ioread32(priv->iobase + HW_CCR) & BM_CCALOFF)
+	if (ioread32(priv->iobase + HW_CCR) & BM_CCALOFF) {
 		dev_info(priv->dev, "Auto calibration is not enabled\n");
-	else {
+	} else {
 		u32 cal = ioread32(priv->iobase + HW_CALIBRATION);
 
 		dev_info(priv->dev, "%s auto calibration is enabled (%x)\n",
@@ -370,8 +363,8 @@ static int __init asm9260_rtc_probe(struct platform_device *pdev)
 	}
 
 	ret = devm_request_threaded_irq(dev, irq_alarm, NULL,
-				asm9260_rtc_irq, IRQF_ONESHOT,
-				dev_name(dev), priv);
+					asm9260_rtc_irq, IRQF_ONESHOT,
+					dev_name(dev), priv);
 	if (ret < 0) {
 		dev_err(dev, "can't get irq %i, err %d\n",
 			irq_alarm, ret);
