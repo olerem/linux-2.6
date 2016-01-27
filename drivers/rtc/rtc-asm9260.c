@@ -328,11 +328,11 @@ static int __init asm9260_rtc_start(struct asm9260_rtc_priv *priv)
 static int __init asm9260_rtc_probe(struct platform_device *pdev)
 {
 	struct asm9260_rtc_priv *priv;
+	struct device *dev = &pdev->dev;
 	struct resource	*res;
 	int irq_alarm, ret;
 
-	priv = devm_kzalloc(&pdev->dev,
-			   sizeof(struct asm9260_rtc_priv), GFP_KERNEL);
+	priv = devm_kzalloc(dev, sizeof(struct asm9260_rtc_priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
@@ -341,19 +341,19 @@ static int __init asm9260_rtc_probe(struct platform_device *pdev)
 
 	irq_alarm = platform_get_irq(pdev, 0);
 	if (irq_alarm < 0) {
-		dev_err(&pdev->dev, "No alarm IRQ resource defined\n");
+		dev_err(dev, "No alarm IRQ resource defined\n");
 		return irq_alarm;
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	priv->iobase = devm_ioremap_resource(&pdev->dev, res);
+	priv->iobase = devm_ioremap_resource(dev, res);
 	if (IS_ERR(priv->iobase))
 		return PTR_ERR(priv->iobase);
 
-	priv->clk = devm_clk_get(&pdev->dev, "ahb");
+	priv->clk = devm_clk_get(dev, "ahb");
 	ret = clk_prepare_enable(priv->clk);
 	if (ret) {
-		dev_err(&pdev->dev, "Failed to enable clk!\n");
+		dev_err(dev, "Failed to enable clk!\n");
 		return ret;
 	}
 
@@ -361,20 +361,19 @@ static int __init asm9260_rtc_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	priv->rtc = devm_rtc_device_register(&pdev->dev, "asm9260-rtc",
+	priv->rtc = devm_rtc_device_register(dev, dev_name(dev),
 					      &asm9260_rtc_ops, THIS_MODULE);
 	if (IS_ERR(priv->rtc)) {
 		ret = PTR_ERR(priv->rtc);
-		dev_err(&pdev->dev,
-			"Failed to register RTC device -> %d\n", ret);
+		dev_err(dev, "Failed to register RTC device: %d\n", ret);
 		goto err_return;
 	}
 
-	ret = devm_request_irq(&pdev->dev, irq_alarm,
-				asm9260_rtc_irq, IRQF_SHARED | IRQF_ONESHOT,
-				"asm9260-rtc", priv);
+	ret = devm_request_threaded_irq(dev, irq_alarm, NULL,
+				asm9260_rtc_irq, IRQF_ONESHOT,
+				dev_name(dev), priv);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "can't get irq %i, err %d\n",
+		dev_err(dev, "can't get irq %i, err %d\n",
 			irq_alarm, ret);
 		goto err_return;
 	}
@@ -396,7 +395,7 @@ static int __exit asm9260_rtc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct of_device_id wmt_dt_ids[] = {
+static const struct of_device_id asm9260_dt_ids[] = {
 	{ .compatible = "alphascale,asm9260-rtc", },
 	{}
 };
@@ -407,7 +406,7 @@ static struct platform_driver asm9260_rtc_driver = {
 	.driver		= {
 		.name	= "asm9260-rtc",
 		.owner	= THIS_MODULE,
-		.of_match_table = wmt_dt_ids,
+		.of_match_table = asm9260_dt_ids,
 	},
 };
 
