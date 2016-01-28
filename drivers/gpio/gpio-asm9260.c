@@ -136,7 +136,7 @@ static int asm9260_gpio_probe(struct platform_device *pdev)
 	}
 
 	priv->chip = asm9260_gpio_chip;
-//	priv->chip.dev = &pdev->dev;
+	priv->chip.parent = &pdev->dev;
 
 	platform_set_drvdata(pdev, priv);
 
