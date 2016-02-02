@@ -236,7 +236,7 @@
 			clocks = <&acc CLKID_AHB_RTC>;
 			clock-names = "ahb";
 			interrupts = <2>;
-			calibration = <0x129c>;
+			alphascale,calibration = <0x129c>;
 		};
 
 		ethernet0: dwmac@80500000 {
