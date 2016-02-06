@@ -724,7 +724,7 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 			"Got data interrupt 0x%08x even though no data operation was in progress.\n",
 			(unsigned)intmask);
 
-		if (intmask & AU6601_INT_ERROR_MASK) {
+		if (host->cmd && intmask & AU6601_INT_ERROR_MASK) {
 			host->cmd->error = -ETIMEDOUT;
 			au6601_request_complete(host);
 		}
