@@ -1,0 +1,13 @@
+#
+# ICC driver configuration
+#
+menuconfig ICC
+	tristate "ICC support"
+	---help---
+	  The "Inter-Chip Communication" support
+
+if ICC
+# add transport here
+
+
+endif # ICC
