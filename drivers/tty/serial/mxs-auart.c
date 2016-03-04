@@ -1502,9 +1502,9 @@ static struct uart_driver auart_driver = {
 static void mxs_init_regs(struct mxs_auart_port *s)
 {
 	if (is_asm9260_auart(s))
-		s->vendor = vendor_alphascale_asm9260;
+		s->vendor = &vendor_alphascale_asm9260;
 	else
-		s->vendor = vendor_freescale_stmp37xx;
+		s->vendor = &vendor_freescale_stmp37xx;
 }
 
 static int mxs_get_dt_clks(struct mxs_auart_port *s,
