@@ -412,11 +412,11 @@ static const u16 mxs_stmp37xx_offsets[REG_ARRAY_SIZE] = {
 	[REG_AUTOBAUD] = AUART_AUTOBAUD,
 };
 
-static struct vendor_data vendor_alphascale_asm9260 = {
+static const struct vendor_data vendor_alphascale_asm9260 = {
 	.reg_offset = mxs_asm9260_offsets,
 };
 
-static struct vendor_data vendor_freescale_stmp37xx = {
+static const struct vendor_data vendor_freescale_stmp37xx = {
 	.reg_offset = mxs_stmp37xx_offsets,
 };
 
