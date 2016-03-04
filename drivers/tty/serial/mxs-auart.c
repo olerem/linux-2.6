@@ -365,16 +365,6 @@ enum mxs_auart_type {
 	ASM9260_AUART,
 };
 
-struct mxs_auart_regs {
-	void __iomem *ctrl0;
-	void __iomem *ctrl1;
-	void __iomem *ctrl2;
-	void __iomem *linectrl;
-	void __iomem *intr;
-	void __iomem *data;
-	void __iomem *stat;
-};
-
 struct vendor_data {
 	const u16	*reg_offset;
 };
@@ -442,8 +432,6 @@ struct mxs_auart_port {
 	enum mxs_auart_type devtype;
 	const struct vendor_data *vendor;
 
-	struct mxs_auart_regs regs;
-
 	struct clk *clk;
 	struct clk *clk_ahb;
 	struct device *dev;
@@ -502,14 +490,13 @@ static inline bool auart_dma_enabled(struct mxs_auart_port *s)
 static unsigned int mxs_reg_to_offset(const struct mxs_auart_port *uap,
 		        unsigned int reg)
 {
-	return uap->reg_offset[reg];
+	return uap->vendor.reg_offset[reg];
 }
 
 static unsigned int mxs_read(const struct mxs_auart_port *uap,
 		        unsigned int reg)
 {
-	void __iomem *addr = uap->port.membase +
-	mxs_reg_to_offset(uap, reg);
+	void __iomem *addr = uap->port.membase + mxs_reg_to_offset(uap, reg);
 
 	return readl_relaxed(addr);
 }
