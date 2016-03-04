@@ -490,7 +490,7 @@ static inline bool auart_dma_enabled(struct mxs_auart_port *s)
 static unsigned int mxs_reg_to_offset(const struct mxs_auart_port *uap,
 		        unsigned int reg)
 {
-	return uap->vendor.reg_offset[reg];
+	return uap->vendor->reg_offset[reg];
 }
 
 static unsigned int mxs_read(const struct mxs_auart_port *uap,
