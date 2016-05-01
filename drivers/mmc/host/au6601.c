@@ -115,7 +115,10 @@
 #define AU6601_REG_CMD_CTRL	0x81
 #define AU6601_REG_BUS_CTRL	0x82
  #define AU6601_BUS_WIDTH_4BIT	BIT(5)
-#define REG_83	0x83
+#define AU6601_REG_DATA_CTRL	0x83
+ #define AU6601_DATA_WRITE	BIT(7)
+ #define AU6601_DMA_EN		BIT(6)
+ #define AU6601_DATA_EN		BIT(0)
 
 #define AU6601_REG_BUS_STATUS	0x84
  #define AU6601_BUS_STAT_CMD	BIT(15)
@@ -333,11 +336,11 @@ static void au6601_trigger_data_transfer(struct au6601_host *host,
 	u8 ctrl = 0;
 
 	if (data->flags & MMC_DATA_WRITE)
-		ctrl |= 0x80;
+		ctrl |= AU6601_DATA_WRITE;
 
 	if (dma) {
 		iowrite32(host->phys_base, host->iobase + AU6601_REG_SDMA_ADDR);
-		ctrl |= 0x40;
+		ctrl |= AU6601_DMA_EN;
 		host->dma_on = 1;
 
 		if (data->flags & MMC_DATA_WRITE)
@@ -353,7 +356,7 @@ static void au6601_trigger_data_transfer(struct au6601_host *host,
 done:
 	iowrite32(data->blksz * host->requested_blocks,
 		host->iobase + AU6601_REG_BLOCK_SIZE);
-	iowrite8(ctrl | 0x1, host->iobase + REG_83);
+	iowrite8(ctrl | AU6601_DATA_EN, host->iobase + AU6601_REG_DATA_CTRL);
 }
 
 /*****************************************************************************\
@@ -939,7 +942,7 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		dev_err(host->dev, "Unknown power parametr\n");
 	}
 
-	iowrite8(0x80, host->iobase + REG_83);
+	iowrite8(AU6601_DATA_WRITE, host->iobase + AU6601_REG_DATA_CTRL);
 	iowrite8(0x7d, host->iobase + REG_69);
 	ioread8(host->iobase + REG_74);
 	mutex_unlock(&host->cmd_mutex);
