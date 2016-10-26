@@ -135,7 +135,7 @@ static void spi_imx_buf_rx_##type(struct spi_imx_data *spi_imx)		\
 	unsigned int val = readl(spi_imx->base + MXC_CSPIRXDATA);	\
 									\
 	if (spi_imx->rx_buf) {						\
-		*(type *)spi_imx->rx_buf = val;				\
+		*(type *)spi_imx->rx_buf = be32_to_cpu(val);				\
 		spi_imx->rx_buf += sizeof(type);			\
 	}								\
 }
@@ -152,7 +152,7 @@ static void spi_imx_buf_tx_##type(struct spi_imx_data *spi_imx)		\
 									\
 	spi_imx->count -= sizeof(type);					\
 									\
-	writel(val, spi_imx->base + MXC_CSPITXDATA);			\
+	writel(cpu_to_be32(val), spi_imx->base + MXC_CSPITXDATA);			\
 }
 
 MXC_SPI_BUF_RX(u8)
@@ -771,7 +771,8 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 	struct spi_imx_data *spi_imx = spi_master_get_devdata(spi->master);
 	struct spi_imx_config config;
 
-	config.bpw = t ? t->bits_per_word : spi->bits_per_word;
+	//config.bpw = t ? t->bits_per_word : spi->bits_per_word;
+	config.bpw = 32;
 	config.speed_hz  = t ? t->speed_hz : spi->max_speed_hz;
 	config.mode = spi->mode;
 	config.cs = spi->chip_select;
