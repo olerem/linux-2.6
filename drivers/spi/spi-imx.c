@@ -999,7 +999,7 @@ static int spi_imx_pio_transfer(struct spi_device *spi,
 
 	spi_imx->devtype_data->intctrl(spi_imx, MXC_INT_TE);
 
-	wait_for_completion(&spi_imx->xfer_done);
+	wait_for_completion_io(&spi_imx->xfer_done);
 
 	return transfer->len;
 }
