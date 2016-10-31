@@ -137,6 +137,12 @@ config CAN_XILINXCAN
 	  Xilinx CAN driver. This driver supports both soft AXI CAN IP and
 	  Zynq CANPS IP.
 
+config CAN_ICC
+	tristate "ICC CAN"
+	depends on ICC || COMPILE_TEST
+	---help---
+	  ICC CAN driver.
+
 source "drivers/net/can/mscan/Kconfig"
 
 source "drivers/net/can/sja1000/Kconfig"
