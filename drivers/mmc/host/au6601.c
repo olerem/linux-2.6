@@ -967,7 +967,7 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 	}
 
 	if (208 <= clock) {
-		clk_src = AU6601_CLK_384_MHZ | CARD_CLK_OVER_CLK;
+		clk_src = AU6601_CLK_384_MHZ | AU6601_CLK_OVER_CLK;
 		clk_div = 2;
 	}
 
