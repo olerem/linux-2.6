@@ -896,8 +896,8 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 	u8 clk_div;
 
 	if (clock == 0) {
-		//writew(0, pdx->ioaddr + AU6601_CLK_SELECT);
-		iowrite8(0, pdx->ioaddr + AU6601_DATA_XFER_CTRL);
+		//writew(0, host->iobase + AU6601_CLK_SELECT);
+		iowrite8(0, host->iobase + AU6601_DATA_XFER_CTRL);
 		return;
 	}
 
