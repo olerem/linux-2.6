@@ -83,12 +83,13 @@
 #define  AU6601_CLK_ENABLE		0x01
 #define  AU6601_CLK_X2_MODE		0x02
 #define	 AU6601_CLK_EXT_PLL		0x04
-
 #define  AU6601_CLK_31_25_MHZ	0x00
 #define	 AU6601_CLK_48_MHZ		0x10
 #define	 AU6601_CLK_125_MHZ		0x20
 #define	 AU6601_CLK_384_MHZ		0x30
 #define	 AU6601_CLK_OVER_CLK	0x80
+
+#define AU6601_CLK_DIVIDER			0x73
 
 #if 0
 /* recheck clock */
@@ -104,29 +105,37 @@
  #define AU6601_PLL_EN		BIT(0)
 #endif
 
+#define AU6601_INTERFACE_MODE_CTRL		0x74
+#define  AU6601_DLINK_MODE				0x80
+#define	 AU6601_INTERRUPT_DELAY_TIME	0x40
+#define	 AU6601_SIGNAL_REQ_CTRL			0x30
+
 /* ??? */
-#define REG_74	0x74
-/* ??? */
-#define REG_75	0x75
+#define AU6601_ACTIVE_CTRL		0x75
+#define AU6601_XD_CARD_ACTIVE	0x10
+#define AU6601_MS_CARD_ACTIVE	0x08
+#define AU6601_SD_CARD_ACTIVE	0x01
+
 /* card slot state? */
-#define REG_76	0x76
+#define AU6601_DETECT_STATUS	0x76
+#define  AU6601_DETECT_EN		0x80
 /* ??? */
-#define REG_77	0x77
+#define REG_77					0x77
 /* looks like soft reset? */
-#define AU6601_REG_SW_RESET	0x79
- #define AU6601_RESET_UNK	BIT(7)	/* unknown bit */
- #define AU6601_RESET_DATA	BIT(3)
- #define AU6601_RESET_CMD	BIT(0)
+#define AU6601_REG_SW_RESET		0x79
+ #define AU6601_BUF_CTRL_RESET	BIT(7)
+ #define AU6601_RESET_DATA		BIT(3)
+ #define AU6601_RESET_CMD		BIT(0)
 /* see REG_70 */
-#define REG_7A	0x7a
+#define AU6601_OUTPUT_ENABLE	0x7a
 /* ??? Padding? Timeing? */
-#define REG_7B	0x7b
+#define AU6601_PAD_DRIVE0	0x7b
 /* ??? Padding? Timeing? */
-#define REG_7C	0x7c
+#define AU6601_PAD_DRIVE1	0x7c
 /* ??? Padding? Timeing? */
-#define REG_7D	0x7d
+#define AU6601_PAD_DRIVE2	0x7d
 /* read EEPROM? */
-#define REG_7F	0x7f
+#define AU6601_FUNCTION	0x7f
 
 #define AU6601_REG_CMD_CTRL	0x81
 #define AU6601_REG_BUS_CTRL	0x82
@@ -315,7 +324,7 @@ static void au6601_reset(struct au6601_host *host, u8 val)
 {
 	int i;
 
-	iowrite8(val | AU6601_RESET_UNK, host->iobase + AU6601_REG_SW_RESET);
+	iowrite8(val | AU6601_BUF_CTRL_RESET, host->iobase + AU6601_REG_SW_RESET);
 	for (i = 0; i < 100; i++) {
 		if (!(ioread8(host->iobase + AU6601_REG_SW_RESET) & val))
 			return;
@@ -335,12 +344,12 @@ static void au6601_set_power(struct au6601_host *host,
 	u8 tmp1, tmp2;
 
 	tmp1 = ioread8(host->iobase + AU6601_POWER_CONTROL);
-	tmp2 = ioread8(host->iobase + REG_7A);
+	tmp2 = ioread8(host->iobase + AU6601_OUTPUT_ENABLE);
 	if (set) {
 		iowrite8(tmp1 | value, host->iobase + AU6601_POWER_CONTROL);
-		iowrite8(tmp2 | value, host->iobase + REG_7A);
+		iowrite8(tmp2 | value, host->iobase + AU6601_OUTPUT_ENABLE);
 	} else {
-		iowrite8(tmp2 & ~value, host->iobase + REG_7A);
+		iowrite8(tmp2 & ~value, host->iobase + AU6601_OUTPUT_ENABLE);
 		iowrite8(tmp1 & ~value, host->iobase + AU6601_POWER_CONTROL);
 	}
 }
@@ -856,7 +865,7 @@ static void au6601_sdc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	host->mrq = mrq;
 
 	/* check if card is present then send command and data */
-	if (ioread8(host->iobase + REG_76) & 0x1)
+	if (ioread8(host->iobase + AU6601_DETECT_STATUS) & 0x1)
 		au6601_send_cmd(host, mrq->cmd);
 	else {
 		mrq->cmd->error = -ENOMEDIUM;
@@ -1017,9 +1026,10 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	mutex_lock(&host->cmd_mutex);
 
 	iowrite8(0, host->iobase + REG_85);
-	iowrite8(0x31, host->iobase + REG_7B);
-	iowrite8(0x33, host->iobase + REG_7C);
-	iowrite8(1, host->iobase + REG_75);
+	iowrite8(0x44, host->iobase + AU6601_PAD_DRIVE0);
+	iowrite8(0x44, host->iobase + AU6601_PAD_DRIVE1);
+	iowrite8(0x00, host->iobase + AU6601_PAD_DRIVE2);
+	iowrite8(1, host->iobase + AU6601_ACTIVE_CTRL);
 	iowrite8(0, host->iobase + REG_85);
 
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
@@ -1052,7 +1062,7 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	iowrite8(AU6601_DATA_WRITE, host->iobase + AU6601_REG_DATA_CTRL);
 	iowrite8(0x7d, host->iobase + AU6601_TIME_OUT_CTRL);
-	ioread8(host->iobase + REG_74);
+	ioread8(host->iobase + AU6601_INTERFACE_MODE_CTRL);
 	mutex_unlock(&host->cmd_mutex);
 }
 
@@ -1182,16 +1192,16 @@ static void au6601_init_mmc(struct au6601_host *host)
 static void au6601_hw_init(struct au6601_host *host)
 {
 
-	iowrite8(0, host->iobase + REG_74);
+	iowrite8(0, host->iobase + AU6601_INTERFACE_MODE_CTRL);
 
-	iowrite8(0, host->iobase + REG_76);
+	iowrite8(0, host->iobase + AU6601_DETECT_STATUS);
 	/* disable DlinkMode? disabled by default. */
-	iowrite8(0x80, host->iobase + REG_76);
+	iowrite8(AU6601_DETECT_EN, host->iobase + AU6601_DETECT_STATUS);
 
 	au6601_reset(host, AU6601_RESET_CMD);
 
 	iowrite8(0x0, host->iobase + AU6601_DMA_BOUNDARY);
-	iowrite8(0x1, host->iobase + REG_75);
+	iowrite8(0x1, host->iobase + AU6601_ACTIVE_CTRL);
 
 	au6601_unmask_irqs(host);
 
@@ -1201,7 +1211,7 @@ static void au6601_hw_init(struct au6601_host *host)
 
 	iowrite8(0x0, host->iobase + AU6601_DMA_BOUNDARY);
 	iowrite8(0x0, host->iobase + REG_85);
-	iowrite8(0x8, host->iobase + REG_75);
+	iowrite8(0x8, host->iobase + AU6601_ACTIVE_CTRL);
 	iowrite32(0x3d00fa, host->iobase + REG_B4);
 
 	au6601_set_power(host, 0x1, 0);
@@ -1306,7 +1316,7 @@ static int __init au6601_pci_probe(struct pci_dev *pdev,
 
 static void au6601_hw_uninit(struct au6601_host *host)
 {
-	iowrite8(0x0, host->iobase + REG_76);
+	iowrite8(0x0, host->iobase + AU6601_DETECT_STATUS);
 	au6601_mask_irqs(host);
 
 	au6601_set_power(host, 0x1, 0);
