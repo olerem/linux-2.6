@@ -140,10 +140,11 @@
 #define AU6601_REG_CMD_CTRL	0x81
 #define AU6601_REG_BUS_CTRL	0x82
  #define AU6601_BUS_WIDTH_4BIT	BIT(5)
-#define AU6601_REG_DATA_CTRL	0x83
- #define AU6601_DATA_WRITE	BIT(7)
- #define AU6601_DMA_EN		BIT(6)
- #define AU6601_DATA_EN		BIT(0)
+
+#define AU6601_DATA_XFER_CTRL	0x83
+ #define AU6601_DATA_WRITE		BIT(7)
+ #define AU6601_DATA_DMA_MODE	BIT(6)
+ #define AU6601_DATA_START_XFER	BIT(0)
 
 #define AU6601_REG_BUS_STATUS	0x84
  #define AU6601_BUS_STAT_CMD	BIT(15)
@@ -365,7 +366,7 @@ static void au6601_trigger_data_transfer(struct au6601_host *host,
 
 	if (dma) {
 		iowrite32(host->phys_base, host->iobase + AU6601_REG_SDMA_ADDR);
-		ctrl |= AU6601_DMA_EN;
+		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
 
 		if (data->flags & MMC_DATA_WRITE)
@@ -381,7 +382,7 @@ static void au6601_trigger_data_transfer(struct au6601_host *host,
 done:
 	iowrite32(data->blksz * host->requested_blocks,
 		host->iobase + AU6601_REG_BLOCK_SIZE);
-	iowrite8(ctrl | AU6601_DATA_EN, host->iobase + AU6601_REG_DATA_CTRL);
+	iowrite8(ctrl | AU6601_DATA_START_XFER, host->iobase + AU6601_DATA_XFER_CTRL);
 }
 
 /*****************************************************************************\
@@ -895,8 +896,8 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 	u8 clk_div;
 
 	if (clock == 0) {
-		//writew(0, pdx->ioaddr + CARD_CLK_SELECT);
-		writeb(0x00, pdx->ioaddr + SD_DATA_XFER_CTRL);
+		//writew(0, pdx->ioaddr + AU6601_CLK_SELECT);
+		iowrite8(0, pdx->ioaddr + AU6601_DATA_XFER_CTRL);
 		return;
 	}
 
@@ -1060,7 +1061,7 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		dev_err(host->dev, "Unknown power parametr\n");
 	}
 
-	iowrite8(AU6601_DATA_WRITE, host->iobase + AU6601_REG_DATA_CTRL);
+	iowrite8(AU6601_DATA_WRITE, host->iobase + AU6601_DATA_XFER_CTRL);
 	iowrite8(0x7d, host->iobase + AU6601_TIME_OUT_CTRL);
 	ioread8(host->iobase + AU6601_INTERFACE_MODE_CTRL);
 	mutex_unlock(&host->cmd_mutex);
