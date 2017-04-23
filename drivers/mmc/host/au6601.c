@@ -44,12 +44,14 @@
 /* SDMA phy address. Higer then 0x0800.0000? */
 #define AU6601_REG_SDMA_ADDR	0x00
  #define AU6601_SDMA_MASK	0xfffff000
-/* ADMA block count? AU6621 only. */
-#define REG_05	0x05
+
+#define AU6601_DMA_BOUNDARY	0x05
+#define AU6621_DMA_PAGE_CNT	0x05
 /* PIO */
 #define AU6601_REG_BUFFER	0x08
 /* ADMA ctrl? AU6621 only. */
-#define REG_0C	0x0c
+#define AU6621_DMA_CTRL	0x0c
+#define  AU6621_DMA_ENABLE	BIT(0)
 /* ADMA phy address. AU6621 only. */
 #define REG_10	0x10
 /* CMD index */
@@ -69,14 +71,27 @@
 #define REG_61	0x61
 /* Same as REG_61? */
 #define REG_63	0x63
-/* ??? */
-#define REG_69	0x69
+/* default timeout set to 125: 125 * 40ms = 5 sec
+ * how exactly it is calculated? */
+#define AU6601_TIME_OUT_CTRL	0x69
 /* Block size for SDMA or PIO */
 #define AU6601_REG_BLOCK_SIZE	0x6c
 /* Some power related reg, used together with REG_7A */
-#define REG_70	0x70
+#define AU6601_POWER_CONTROL	0x70
 /* PLL ctrl */
-#define AU6601_REG_PLL_CTRL	0x72
+#define AU6601_CLK_SELECT	0x72
+#define  AU6601_CLK_ENABLE		0x01
+#define  AU6601_CLK_X2_MODE		0x02
+#define	 AU6601_CLK_EXT_PLL		0x04
+
+#define  AU6601_CLK_31_25_MHZ	0x00
+#define	 AU6601_CLK_48_MHZ		0x10
+#define	 AU6601_CLK_125_MHZ		0x20
+#define	 AU6601_CLK_384_MHZ		0x30
+#define	 AU6601_CLK_OVER_CLK	0x80
+
+#if 0
+/* recheck clock */
  #define AU6601_PLL_DIV8_MASK	0xff
  #define AU6601_PLL_DIV4_MASK	0xf
  #define AU6601_PLL_DIV_S	8
@@ -87,6 +102,7 @@
  #define AU6601_PLL_MOD0	0x0	/* x 1	  */
  #define AU6601_PLL_MOD_S	4
  #define AU6601_PLL_EN		BIT(0)
+#endif
 
 /* ??? */
 #define REG_74	0x74
@@ -318,14 +334,14 @@ static void au6601_set_power(struct au6601_host *host,
 {
 	u8 tmp1, tmp2;
 
-	tmp1 = ioread8(host->iobase + REG_70);
+	tmp1 = ioread8(host->iobase + AU6601_POWER_CONTROL);
 	tmp2 = ioread8(host->iobase + REG_7A);
 	if (set) {
-		iowrite8(tmp1 | value, host->iobase + REG_70);
+		iowrite8(tmp1 | value, host->iobase + AU6601_POWER_CONTROL);
 		iowrite8(tmp2 | value, host->iobase + REG_7A);
 	} else {
 		iowrite8(tmp2 & ~value, host->iobase + REG_7A);
-		iowrite8(tmp1 & ~value, host->iobase + REG_70);
+		iowrite8(tmp1 & ~value, host->iobase + AU6601_POWER_CONTROL);
 	}
 }
 
@@ -866,6 +882,97 @@ static unsigned int au6601_calc_div(unsigned int clock, unsigned int clock_mod,
 
 static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 {
+	u16 clk_src;
+	u8 clk_div;
+
+	if (clock == 0) {
+		//writew(0, pdx->ioaddr + CARD_CLK_SELECT);
+		writeb(0x00, pdx->ioaddr + SD_DATA_XFER_CTRL);
+		return;
+	}
+
+	if (clock <= 1) {
+		clk_src = AU6601_CLK_31_25_MHZ;
+		clk_div = 200;
+	}
+
+	if ((1 < clock) && (clock < 5)) {
+		clk_src = AU6601_CLK_31_25_MHZ;
+		clk_div = 16;
+	}
+
+	if ((5 <= clock) && (clock < 10)) {
+		clk_src = AU6601_CLK_48_MHZ;
+		clk_div = 10;
+	}
+
+	if ((10 <= clock) && (clock < 20)) {
+		clk_src = AU6601_CLK_48_MHZ;
+		clk_div = 5;
+	}
+
+	if ((20 <= clock) && (clock < 25)) {
+		clk_src = AU6601_CLK_125_MHZ;
+		clk_div = 7;
+	}
+
+	if ((25 <= clock) && (clock < 40)) {
+		clk_src = AU6601_CLK_48_MHZ;
+		clk_div = 2;
+	}
+
+	if ((40 <= clock) && (clock < 50)) {
+		clk_src = AU6601_CLK_384_MHZ;
+		clk_div = 10;
+	}
+
+	if ((50 <= clock) && (clock < 60)) {
+		clk_src = AU6601_CLK_48_MHZ;
+		clk_div = 1;
+	}
+
+	if ((60 <= clock) && (clock < 80)) {
+		clk_src = AU6601_CLK_384_MHZ;
+		clk_div = 7;
+	}
+
+	if ((80 <= clock) && (clock < 100)) {
+		clk_src = AU6601_CLK_384_MHZ;
+		clk_div = 5;
+	}
+
+	if ((100 <= clock) && (clock < 130)) {
+		clk_src = AU6601_CLK_384_MHZ;
+		clk_div = 4;
+	}
+
+	if ((130 <= clock) && (clock < 194)) {
+		clk_src = AU6601_CLK_384_MHZ;
+		clk_div = 3;
+	}
+
+	if ((194 <= clock) && (clock < 208)) {
+		clk_src = AU6601_CLK_384_MHZ;
+		clk_div = 2;
+	}
+
+	if (208 <= clock) {
+		clk_src = AU6601_CLK_384_MHZ | CARD_CLK_OVER_CLK;
+		clk_div = 2;
+	}
+
+	clk_src |= ((clk_div - 1) << 8);
+	clk_src |= AU6601_CLK_ENABLE;
+
+	dev_dbg(host->dev, "set freq %d, use div %d, mod %x\n",
+			clock, clk_div, clk_src);
+
+	iowrite16(clk_src, host->iobase + AU6601_CLK_SELECT);
+}
+
+#if 0
+static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
+{
 	unsigned int clock_out = 0, div = 0, mod = 0, ctrl = AU6601_PLL_EN;
 	//int i, diff = MAX_INT;
 	int i, diff = 0x7fffffff;
@@ -898,8 +1005,9 @@ done:
 
 	iowrite16((div - 1) << AU6601_PLL_DIV_S
 		  | mod << AU6601_PLL_MOD_S | ctrl,
-		  host->iobase + AU6601_REG_PLL_CTRL);
+		  host->iobase + AU6601_CLK_SELECT);
 }
+#endif
 
 static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
@@ -943,7 +1051,7 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	}
 
 	iowrite8(AU6601_DATA_WRITE, host->iobase + AU6601_REG_DATA_CTRL);
-	iowrite8(0x7d, host->iobase + REG_69);
+	iowrite8(0x7d, host->iobase + AU6601_TIME_OUT_CTRL);
 	ioread8(host->iobase + REG_74);
 	mutex_unlock(&host->cmd_mutex);
 }
@@ -1082,7 +1190,7 @@ static void au6601_hw_init(struct au6601_host *host)
 
 	au6601_reset(host, AU6601_RESET_CMD);
 
-	iowrite8(0x0, host->iobase + REG_05);
+	iowrite8(0x0, host->iobase + AU6601_DMA_BOUNDARY);
 	iowrite8(0x1, host->iobase + REG_75);
 
 	au6601_unmask_irqs(host);
@@ -1091,7 +1199,7 @@ static void au6601_hw_init(struct au6601_host *host)
 
 	au6601_reset(host, AU6601_RESET_DATA);
 
-	iowrite8(0x0, host->iobase + REG_05);
+	iowrite8(0x0, host->iobase + AU6601_DMA_BOUNDARY);
 	iowrite8(0x0, host->iobase + REG_85);
 	iowrite8(0x8, host->iobase + REG_75);
 	iowrite32(0x3d00fa, host->iobase + REG_B4);
