@@ -32,64 +32,64 @@
 
 #define MHZ_TO_HZ(freq)	((freq) * 1000 * 1000)
 
-#define AU6601_BASE_CLOCK		MHZ_TO_HZ(31)
-#define AU6601_MIN_CLOCK		(150 * 1000)
-#define AU6601_MAX_CLOCK		MHZ_TO_HZ(208)
-#define AU6601_MAX_SEGMENTS		512
-#define AU6601_MAX_BLOCK_LENGTH		512
-#define AU6601_MAX_DMA_BLOCKS		8
-#define AU6601_DMA_LOCAL_SEGMENTS	3
-#define AU6601_MAX_BLOCK_COUNT		65536
+#define AU6601_BASE_CLOCK				MHZ_TO_HZ(31)
+#define AU6601_MIN_CLOCK				(150 * 1000)
+#define AU6601_MAX_CLOCK				MHZ_TO_HZ(208)
+#define AU6601_MAX_SEGMENTS				512
+#define AU6601_MAX_BLOCK_LENGTH			512
+#define AU6601_MAX_DMA_BLOCKS			8
+#define AU6601_DMA_LOCAL_SEGMENTS		3
+#define AU6601_MAX_BLOCK_COUNT			65536
 
 /* SDMA phy address. Higer then 0x0800.0000? */
-#define AU6601_REG_SDMA_ADDR	0x00
- #define AU6601_SDMA_MASK	0xfffff000
+#define AU6601_REG_SDMA_ADDR			0x00
+ #define AU6601_SDMA_MASK				0xfffff000
 
-#define AU6601_DMA_BOUNDARY	0x05
-#define AU6621_DMA_PAGE_CNT	0x05
+#define AU6601_DMA_BOUNDARY				0x05
+#define AU6621_DMA_PAGE_CNT				0x05
 /* PIO */
-#define AU6601_REG_BUFFER	0x08
+#define AU6601_REG_BUFFER				0x08
 /* ADMA ctrl? AU6621 only. */
-#define AU6621_DMA_CTRL	0x0c
-#define  AU6621_DMA_ENABLE	BIT(0)
+#define AU6621_DMA_CTRL					0x0c
+#define  AU6621_DMA_ENABLE				BIT(0)
 /* ADMA phy address. AU6621 only. */
-#define REG_10	0x10
+#define REG_10							0x10
 /* CMD index */
-#define AU6601_REG_CMD_OPCODE	0x23
+#define AU6601_REG_CMD_OPCODE			0x23
 /* CMD parametr */
-#define AU6601_REG_CMD_ARG	0x24
+#define AU6601_REG_CMD_ARG				0x24
 /* CMD response 4x4 Bytes */
-#define AU6601_REG_CMD_RSP0	0x30
-#define AU6601_REG_CMD_RSP1	0x34
-#define AU6601_REG_CMD_RSP2	0x38
-#define AU6601_REG_CMD_RSP3	0x3C
+#define AU6601_REG_CMD_RSP0				0x30
+#define AU6601_REG_CMD_RSP1				0x34
+#define AU6601_REG_CMD_RSP2				0x38
+#define AU6601_REG_CMD_RSP3				0x3C
 /* LED ctrl? */
-#define REG_51	0x51
+#define REG_51							0x51
 /* ??? */
-#define REG_52	0x52
+#define REG_52							0x52
 /* LED related? Always toggled BIT0 */
-#define REG_61	0x61
+#define REG_61							0x61
 /* Same as REG_61? */
-#define REG_63	0x63
+#define REG_63							0x63
 /* default timeout set to 125: 125 * 40ms = 5 sec
  * how exactly it is calculated? */
-#define AU6601_TIME_OUT_CTRL	0x69
+#define AU6601_TIME_OUT_CTRL			0x69
 /* Block size for SDMA or PIO */
-#define AU6601_REG_BLOCK_SIZE	0x6c
+#define AU6601_REG_BLOCK_SIZE			0x6c
 /* Some power related reg, used together with REG_7A */
-#define AU6601_POWER_CONTROL	0x70
+#define AU6601_POWER_CONTROL			0x70
 /* PLL ctrl */
-#define AU6601_CLK_SELECT	0x72
-#define  AU6601_CLK_ENABLE		0x01
-#define  AU6601_CLK_X2_MODE		0x02
-#define	 AU6601_CLK_EXT_PLL		0x04
-#define  AU6601_CLK_31_25_MHZ	0x00
-#define	 AU6601_CLK_48_MHZ		0x10
-#define	 AU6601_CLK_125_MHZ		0x20
-#define	 AU6601_CLK_384_MHZ		0x30
-#define	 AU6601_CLK_OVER_CLK	0x80
+#define AU6601_CLK_SELECT				0x72
+#define	 AU6601_CLK_OVER_CLK			0x80
+#define	 AU6601_CLK_384_MHZ				0x30
+#define	 AU6601_CLK_125_MHZ				0x20
+#define	 AU6601_CLK_48_MHZ				0x10
+#define	 AU6601_CLK_EXT_PLL				0x04
+#define  AU6601_CLK_X2_MODE				0x02
+#define  AU6601_CLK_ENABLE				0x01
+#define  AU6601_CLK_31_25_MHZ			0x00
 
-#define AU6601_CLK_DIVIDER			0x73
+#define AU6601_CLK_DIVIDER				0x73
 
 #if 0
 /* recheck clock */
@@ -109,85 +109,74 @@
 #define  AU6601_DLINK_MODE				0x80
 #define	 AU6601_INTERRUPT_DELAY_TIME	0x40
 #define	 AU6601_SIGNAL_REQ_CTRL			0x30
+#define	 AU6601_WRITE_PROTECT			BIT(0)
 
 /* ??? */
-#define AU6601_ACTIVE_CTRL		0x75
-#define  AU6601_XD_CARD_ACTIVE	0x10
-#define  AU6601_MS_CARD_ACTIVE	0x08
-#define  AU6601_SD_CARD_ACTIVE	0x01
+#define AU6601_ACTIVE_CTRL				0x75
+#define  AU6601_XD_CARD_ACTIVE			0x10
+#define  AU6601_MS_CARD_ACTIVE			0x08
+#define  AU6601_SD_CARD_ACTIVE			0x01
 
 /* card slot state? */
-#define AU6601_DETECT_STATUS	0x76
-#define  AU6601_DETECT_EN		0x80
+#define AU6601_DETECT_STATUS			0x76
+#define  AU6601_DETECT_EN				0x80
 /* ??? */
-#define REG_77					0x77
+#define REG_77							0x77
 /* looks like soft reset? */
-#define AU6601_REG_SW_RESET		0x79
- #define AU6601_BUF_CTRL_RESET	BIT(7)
- #define AU6601_RESET_DATA		BIT(3)
- #define AU6601_RESET_CMD		BIT(0)
+#define AU6601_REG_SW_RESET				0x79
+ #define AU6601_BUF_CTRL_RESET			BIT(7)
+ #define AU6601_RESET_DATA				BIT(3)
+ #define AU6601_RESET_CMD				BIT(0)
 
-#define AU6601_OUTPUT_ENABLE	0x7a
+#define AU6601_OUTPUT_ENABLE			0x7a
 
-#define AU6601_PAD_DRIVE0	0x7b
-#define AU6601_PAD_DRIVE1	0x7c
-#define AU6601_PAD_DRIVE2	0x7d
+#define AU6601_PAD_DRIVE0				0x7b
+#define AU6601_PAD_DRIVE1				0x7c
+#define AU6601_PAD_DRIVE2				0x7d
 /* read EEPROM? */
-#define AU6601_FUNCTION	0x7f
+#define AU6601_FUNCTION					0x7f
 
-#define AU6601_CMD_XFER_CTRL		0x81
-#define	 AU6601_CMD_17_BYTE_CRC		0xc0
-#define	 AU6601_CMD_6_BYTE_WO_CRC	0x80
-#define	 AU6601_CMD_6_BYTE_CRC		0x40
-#define	 AU6601_CMD_NO_RESP			0x00
-#define	 AU6601_CMD_START_XFER		0x20
-#define	 AU6601_CMD_STOP_WAIT_RDY	0x10
+#define AU6601_CMD_XFER_CTRL			0x81
+#define	 AU6601_CMD_17_BYTE_CRC			0xc0
+#define	 AU6601_CMD_6_BYTE_WO_CRC		0x80
+#define	 AU6601_CMD_6_BYTE_CRC			0x40
+#define	 AU6601_CMD_START_XFER			0x20
+#define	 AU6601_CMD_STOP_WAIT_RDY		0x10
+#define	 AU6601_CMD_NO_RESP				0x00
 
+#define AU6601_REG_BUS_CTRL				0x82
+#define  AU6601_BUS_WIDTH_4BIT			BIT(5)
 
-#define AU6601_REG_BUS_CTRL	0x82
- #define AU6601_BUS_WIDTH_4BIT	BIT(5)
+#define AU6601_DATA_XFER_CTRL			0x83
+#define  AU6601_DATA_WRITE				BIT(7)
+#define  AU6601_DATA_DMA_MODE			BIT(6)
+#define  AU6601_DATA_START_XFER			BIT(0)
 
-#define AU6601_DATA_XFER_CTRL	0x83
- #define AU6601_DATA_WRITE		BIT(7)
- #define AU6601_DATA_DMA_MODE	BIT(6)
- #define AU6601_DATA_START_XFER	BIT(0)
-
-#define AU6601_REG_BUS_STATUS	0x84
- #define AU6601_BUS_STAT_CMD	BIT(15)
+#define AU6601_DATA_PIN_STATE			0x84
+#define  AU6601_BUS_STAT_CMD			BIT(15)
 /* BIT(4) - BIT(7) are permanently 1.
  * May be reseved or not attached DAT4-DAT7 */
- #define AU6601_BUS_STAT_DAT3		BIT(3)
- #define AU6601_BUS_STAT_DAT2		BIT(2)
- #define AU6601_BUS_STAT_DAT1		BIT(1)
- #define AU6601_BUS_STAT_DAT0		BIT(0)
- #define AU6601_BUS_STAT_DAT_MASK	0xf
+#define  AU6601_BUS_STAT_DAT3			BIT(3)
+#define  AU6601_BUS_STAT_DAT2			BIT(2)
+#define  AU6601_BUS_STAT_DAT1			BIT(1)
+#define  AU6601_BUS_STAT_DAT0			BIT(0)
+#define  AU6601_BUS_STAT_DAT_MASK		0xf
 
-#define AU6601_OPT					0x85
-#define	 AU6601_OPT_CMD_LINE_LEVEL	0x80
-#define	 AU6601_OPT_NCRC_16_CLK		0x10
-#define	 AU6601_OPT_CMD_NWT			0x08
-#define	 AU6601_OPT_STOP_CLK		BIT(2)
-#define	 AU6601_OPT_DDR_MODE		BIT(1)
-#define	 AU6601_OPT_SD_18V			BIT(0)
+#define AU6601_OPT						0x85
+/* line level here?? really? not in AU6601_DATA_PIN_STATE? */
+#define	 AU6601_OPT_CMD_LINE_LEVEL		0x80
+#define	 AU6601_OPT_NCRC_16_CLK			BIT(4)
+#define	 AU6601_OPT_CMD_NWT				BIT(3)
+#define	 AU6601_OPT_STOP_CLK			BIT(2)
+#define	 AU6601_OPT_DDR_MODE			BIT(1)
+#define	 AU6601_OPT_SD_18V				BIT(0)
 
 #define AU6601_CLK_DELAY				0x86
 #define	 AU6601_CLK_DATA_POSITIVE_EDGE	0x80
 #define	 AU6601_CLK_CMD_POSITIVE_EDGE	0x40
 
-#define AU6601_REG_INT_STATUS	0x90 /* IRQ intmask */
-#define AU6601_REG_INT_ENABLE	0x94
-/* ??? */
-#define REG_A1	0xa1
-/* ??? */
-#define REG_A2	0xa2
-/* ??? */
-#define REG_A3	0xa3
-/* ??? */
-#define REG_B0	0xb0
-/* ??? */
-#define REG_B4	0xb4
-
-
+#define AU6601_REG_INT_STATUS			0x90
+#define AU6601_REG_INT_ENABLE			0x94
 #define  AU6601_INT_CMD_END				0x00000001
 #define  AU6601_INT_DATA_END			0x00000002
 #define  AU6601_INT_DMA_END				0x00000008
@@ -208,8 +197,22 @@
 #define  AU6601_INT_DATA_CRC_ERR		0x00200000
 #define  AU6601_INT_DATA_END_BIT_ERR	0x00400000
 
-#define  AU6601_INT_NORMAL_MASK	0x00007FFF
-#define  AU6601_INT_ERROR_MASK		0xFFFF8000
+#define  AU6601_INT_NORMAL_MASK			0x00007FFF
+#define  AU6601_INT_ERROR_MASK			0xFFFF8000
+
+/* ??? */
+#define REG_A1	0xa1
+/* ??? */
+#define REG_A2	0xa2
+/* ??? */
+#define REG_A3	0xa3
+/* ??? */
+#define REG_B0	0xb0
+/* ??? */
+#define REG_B4	0xb4
+
+
+
 
 /* magic 0xF0001 */
 #define  AU6601_INT_CMD_MASK	(AU6601_INT_CMD_END | AU6601_INT_CMD_TIMEOUT_ERR | \
@@ -320,7 +323,7 @@ static inline int au6601_card_busy(struct au6601_host *host)
 {
 	u8 status;
 
-	status = (ioread8(host->iobase + AU6601_REG_BUS_STATUS) &
+	status = (ioread8(host->iobase + AU6601_DATA_PIN_STATE) &
 		AU6601_BUS_STAT_DAT_MASK);
 	/* If all data lines are up, then card is not busy */
 	if (status == (AU6601_BUS_STAT_DAT0 | AU6601_BUS_STAT_DAT1 |
