@@ -126,13 +126,11 @@
  #define AU6601_BUF_CTRL_RESET	BIT(7)
  #define AU6601_RESET_DATA		BIT(3)
  #define AU6601_RESET_CMD		BIT(0)
-/* see REG_70 */
+
 #define AU6601_OUTPUT_ENABLE	0x7a
-/* ??? Padding? Timeing? */
+
 #define AU6601_PAD_DRIVE0	0x7b
-/* ??? Padding? Timeing? */
 #define AU6601_PAD_DRIVE1	0x7c
-/* ??? Padding? Timeing? */
 #define AU6601_PAD_DRIVE2	0x7d
 /* read EEPROM? */
 #define AU6601_FUNCTION	0x7f
@@ -164,12 +162,18 @@
  #define AU6601_BUS_STAT_DAT0		BIT(0)
  #define AU6601_BUS_STAT_DAT_MASK	0xf
 
-#define REG_85	0x85
- #define AU6601_REG_85_CLK_OFF		BIT(2)
- #define AU6601_REG_85_CLK_DIV2		BIT(1)
- #define AU6601_REG_85_VDD_180		BIT(0)
-/* ??? */
-#define REG_86	0x86
+#define AU6601_OPT					0x85
+#define	 AU6601_OPT_CMD_LINE_LEVEL	0x80
+#define	 AU6601_OPT_NCRC_16_CLK		0x10
+#define	 AU6601_OPT_CMD_NWT			0x08
+#define	 AU6601_OPT_STOP_CLK		BIT(2)
+#define	 AU6601_OPT_DDR_MODE		BIT(1)
+#define	 AU6601_OPT_SD_18V			BIT(0)
+
+#define AU6601_CLK_DELAY				0x86
+#define	 AU6601_CLK_DATA_POSITIVE_EDGE	0x80
+#define	 AU6601_CLK_CMD_POSITIVE_EDGE	0x40
+
 #define AU6601_REG_INT_STATUS	0x90 /* IRQ intmask */
 #define AU6601_REG_INT_ENABLE	0x94
 /* ??? */
@@ -183,41 +187,39 @@
 /* ??? */
 #define REG_B4	0xb4
 
- /* AU6601_REG_INT_STATUS is identical or almost identical with sdhci.h */
- /* OK - are tested and confirmed bits */
- #define  AU6601_INT_RESPONSE		0x00000001	/* ok */
- #define  AU6601_INT_DATA_END		0x00000002	/* fifo, ok */
- #define  AU6601_INT_BLK_GAP		0x00000004
- #define  AU6601_INT_DMA_END		0x00000008
- #define  AU6601_INT_SPACE_AVAIL	0x00000010	/* fifo, ok */
- #define  AU6601_INT_DATA_AVAIL		0x00000020	/* fifo, ok */
- #define  AU6601_INT_CARD_REMOVE	0x00000040
- #define  AU6601_INT_CARD_INSERT	0x00000080	/* 0x40 and 0x80 flip */
- #define  AU6601_INT_CARD_INT		0x00000100
- #define  AU6601_INT_ERROR		0x00008000	/* ok */
- #define  AU6601_INT_TIMEOUT		0x00010000	/* seems to be ok */
- #define  AU6601_INT_CRC		0x00020000	/* seems to be ok */
- #define  AU6601_INT_END_BIT		0x00040000
- #define  AU6601_INT_INDEX		0x00080000
- #define  AU6601_INT_DATA_TIMEOUT	0x00100000
- #define  AU6601_INT_DATA_CRC		0x00200000
- #define  AU6601_INT_DATA_END_BIT	0x00400000
- #define  AU6601_INT_BUS_POWER		0x00800000
- #define  AU6601_INT_ACMD12ERR		0x01000000
- #define  AU6601_INT_ADMA_ERROR		0x02000000
 
- #define  AU6601_INT_NORMAL_MASK	0x00007FFF
- #define  AU6601_INT_ERROR_MASK		0xFFFF8000
+#define  AU6601_INT_CMD_END				0x00000001
+#define  AU6601_INT_DATA_END			0x00000002
+#define  AU6601_INT_DMA_END				0x00000008
+#define  AU6601_INT_WRITE_BUF_RDY		0x00000010
+#define  AU6601_INT_READ_BUF_RDY		0x00000020
+#define  AU6601_INT_CARD_REMOVE			0x00000040
+#define  AU6601_INT_CARD_INSERT			0x00000080
+
+#define  AU6601_INT_OVER_CURRENT_ERR	0x00000100
+#define  AU6601_INT_ERROR				0x00008000
+
+#define  AU6601_INT_CMD_TIMEOUT_ERR		0x00010000
+#define  AU6601_INT_CMD_CRC_ERR			0x00020000
+#define  AU6601_INT_CMD_END_BIT_ERR		0x00040000
+#define  AU6601_INT_CMD_INDEX_ERR		0x00080000
+
+#define  AU6601_INT_DATA_TIMEOUT_ERR	0x00100000
+#define  AU6601_INT_DATA_CRC_ERR		0x00200000
+#define  AU6601_INT_DATA_END_BIT_ERR	0x00400000
+
+#define  AU6601_INT_NORMAL_MASK	0x00007FFF
+#define  AU6601_INT_ERROR_MASK		0xFFFF8000
 
 /* magic 0xF0001 */
- #define  AU6601_INT_CMD_MASK	(AU6601_INT_RESPONSE | AU6601_INT_TIMEOUT | \
-		AU6601_INT_CRC | AU6601_INT_END_BIT | AU6601_INT_INDEX)
+#define  AU6601_INT_CMD_MASK	(AU6601_INT_CMD_END | AU6601_INT_CMD_TIMEOUT_ERR | \
+		AU6601_INT_CMD_CRC_ERR | AU6601_INT_CMD_END_BIT_ERR | AU6601_INT_CMD_INDEX_ERR)
 /* magic 0x70003A */
- #define  AU6601_INT_DATA_MASK	(AU6601_INT_DATA_END | AU6601_INT_DMA_END | \
-		AU6601_INT_DATA_AVAIL | AU6601_INT_SPACE_AVAIL | \
-		AU6601_INT_DATA_TIMEOUT | AU6601_INT_DATA_CRC | \
-		AU6601_INT_DATA_END_BIT)
- #define AU6601_INT_ALL_MASK	((uint32_t)-1)
+#define  AU6601_INT_DATA_MASK	(AU6601_INT_DATA_END | AU6601_INT_DMA_END | \
+		AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY | \
+		AU6601_INT_DATA_TIMEOUT_ERR | AU6601_INT_DATA_CRC_ERR | \
+		AU6601_INT_DATA_END_BIT_ERR)
+#define AU6601_INT_ALL_MASK	((uint32_t)-1)
 
 struct au6601_pll_conf {
 	unsigned int ratio;
@@ -302,13 +304,13 @@ static inline void au6601_unmask_irqs(struct au6601_host *host)
 {
 	iowrite32(AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK |
 		  AU6601_INT_CARD_INSERT | AU6601_INT_CARD_REMOVE |
-		  AU6601_INT_CARD_INT | AU6601_INT_BUS_POWER,
+		  AU6601_INT_OVER_CURRENT_ERR,
 		  host->iobase + AU6601_REG_INT_ENABLE);
 }
 
 static void au6601_clear_set_reg86(struct au6601_host *host, u32 clear, u32 set)
 {
-	au6601_rmw(host->iobase + REG_86, clear, set);
+	au6601_rmw(host->iobase + AU6601_CLK_DELAY, clear, set);
 }
 
 /*
@@ -710,10 +712,10 @@ static void au6601_cmd_irq(struct au6601_host *host, u32 intmask)
 		return;
 	}
 
-	if (intmask & AU6601_INT_TIMEOUT)
+	if (intmask & AU6601_INT_CMD_TIMEOUT_ERR)
 		host->cmd->error = -ETIMEDOUT;
-	else if (intmask & (AU6601_INT_CRC | AU6601_INT_END_BIT |
-			AU6601_INT_INDEX))
+	else if (intmask & (AU6601_INT_CMD_CRC_ERR | AU6601_INT_CMD_END_BIT_ERR |
+			AU6601_INT_CMD_INDEX_ERR))
 		host->cmd->error = -EILSEQ;
 
 	if (host->cmd->error) {
@@ -738,7 +740,7 @@ static void au6601_cmd_irq(struct au6601_host *host, u32 intmask)
 				 "Cannot wait for busy signal when also doing a data transfer");
 	}
 
-	if (intmask & AU6601_INT_RESPONSE)
+	if (intmask & AU6601_INT_CMD_END)
 		au6601_finish_command(host);
 }
 
@@ -768,17 +770,17 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 		return;
 	}
 
-	if (intmask & AU6601_INT_DATA_TIMEOUT)
+	if (intmask & AU6601_INT_DATA_TIMEOUT_ERR)
 		host->data->error = -ETIMEDOUT;
-	else if (intmask & AU6601_INT_DATA_END_BIT)
+	else if (intmask & AU6601_INT_DATA_END_BIT_ERR)
 		host->data->error = -EILSEQ;
-	else if (intmask & AU6601_INT_DATA_CRC)
+	else if (intmask & AU6601_INT_DATA_CRC_ERR)
 		host->data->error = -EILSEQ;
 
 	if (host->data->error)
 		au6601_finish_data(host);
 	else {
-		if (intmask & (AU6601_INT_DATA_AVAIL | AU6601_INT_SPACE_AVAIL))
+		if (intmask & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY))
 			au6601_transfer_data(host);
 
 		if (intmask & AU6601_INT_DATA_END) {
@@ -988,45 +990,6 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 	iowrite16(clk_src, host->iobase + AU6601_CLK_SELECT);
 }
 
-#if 0
-static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
-{
-	unsigned int clock_out = 0, div = 0, mod = 0, ctrl = AU6601_PLL_EN;
-	//int i, diff = MAX_INT;
-	int i, diff = 0x7fffffff;
-
-	if (clock == 0) {
-		ctrl &= ~AU6601_PLL_EN;
-		goto done;
-	}
-
-	for (i = 0; i < ARRAY_SIZE(au6601_pll_cfg); i++) {
-		int tmp_diff, tmp_clock, tmp_div, tmp_clock_mult;
-		const struct au6601_pll_conf *cfg = &au6601_pll_cfg[i];
-
-		tmp_clock_mult = cfg->ratio * (AU6601_BASE_CLOCK / 10);
-		tmp_div = au6601_calc_div(clock, tmp_clock_mult, cfg);
-		tmp_clock = DIV_ROUND_UP(tmp_clock_mult, tmp_div);
-		tmp_diff = clock - tmp_clock;
-
-		if (tmp_diff >= 0 && tmp_diff < diff) {
-			diff = tmp_diff;
-			mod = cfg->mod;
-			div = tmp_div;
-			clock_out = tmp_clock;
-		}
-	}
-
-done:
-	dev_dbg(host->dev, "set freq %d, use freq %d, %d, %x\n",
-		clock, clock_out, div, mod);
-
-	iowrite16((div - 1) << AU6601_PLL_DIV_S
-		  | mod << AU6601_PLL_MOD_S | ctrl,
-		  host->iobase + AU6601_CLK_SELECT);
-}
-#endif
-
 static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct au6601_host *host;
@@ -1034,12 +997,12 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	host = mmc_priv(mmc);
 	mutex_lock(&host->cmd_mutex);
 
-	iowrite8(0, host->iobase + REG_85);
+	iowrite8(0, host->iobase + AU6601_OPT);
 	iowrite8(0x44, host->iobase + AU6601_PAD_DRIVE0);
 	iowrite8(0x44, host->iobase + AU6601_PAD_DRIVE1);
 	iowrite8(0x00, host->iobase + AU6601_PAD_DRIVE2);
 	iowrite8(1, host->iobase + AU6601_ACTIVE_CTRL);
-	iowrite8(0, host->iobase + REG_85);
+	iowrite8(0, host->iobase + AU6601_OPT);
 
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
 		iowrite8(0x0,
@@ -1082,10 +1045,10 @@ static int au6601_signal_voltage_switch(struct mmc_host *mmc,
 
 	switch (ios->signal_voltage) {
 	case MMC_SIGNAL_VOLTAGE_330:
-		au6601_rmw(host->iobase + REG_85, AU6601_REG_85_VDD_180, 0);
+		au6601_rmw(host->iobase + AU6601_OPT, AU6601_OPT_SD_18V, 0);
 		break;
 	case MMC_SIGNAL_VOLTAGE_180:
-		au6601_rmw(host->iobase + REG_85, 0, AU6601_REG_85_VDD_180);
+		au6601_rmw(host->iobase + AU6601_OPT, 0, AU6601_OPT_SD_18V);
 		break;
 	default:
 		/* No signal voltage switch required */
@@ -1219,7 +1182,7 @@ static void au6601_hw_init(struct au6601_host *host)
 	au6601_reset(host, AU6601_RESET_DATA);
 
 	iowrite8(0x0, host->iobase + AU6601_DMA_BOUNDARY);
-	iowrite8(0x0, host->iobase + REG_85);
+	iowrite8(0x0, host->iobase + AU6601_OPT);
 	iowrite8(0x8, host->iobase + AU6601_ACTIVE_CTRL);
 	iowrite32(0x3d00fa, host->iobase + REG_B4);
 
@@ -1330,7 +1293,7 @@ static void au6601_hw_uninit(struct au6601_host *host)
 
 	au6601_set_power(host, 0x1, 0);
 
-	iowrite8(0x0, host->iobase + REG_85);
+	iowrite8(0x0, host->iobase + AU6601_OPT);
 	iowrite8(0x0, host->iobase + REG_B4);
 
 	au6601_set_power(host, 0x8, 0);
