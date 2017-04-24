@@ -137,7 +137,15 @@
 /* read EEPROM? */
 #define AU6601_FUNCTION	0x7f
 
-#define AU6601_REG_CMD_CTRL	0x81
+#define AU6601_CMD_XFER_CTRL		0x81
+#define	 AU6601_CMD_17_BYTE_CRC		0xc0
+#define	 AU6601_CMD_6_BYTE_WO_CRC	0x80
+#define	 AU6601_CMD_6_BYTE_CRC		0x40
+#define	 AU6601_CMD_NO_RESP			0x00
+#define	 AU6601_CMD_START_XFER		0x20
+#define	 AU6601_CMD_STOP_WAIT_RDY	0x10
+
+
 #define AU6601_REG_BUS_CTRL	0x82
  #define AU6601_BUS_WIDTH_4BIT	BIT(5)
 
@@ -663,20 +671,20 @@ static void au6601_send_cmd(struct au6601_host *host,
 
 	switch (mmc_resp_type(cmd)) {
 	case MMC_RSP_NONE:
-		ctrl = 0;
+		ctrl = AU6601_CMD_NO_RESP;
 		break;
 	case MMC_RSP_R1:
-		ctrl = 0x40;
+		ctrl = AU6601_CMD_6_BYTE_CRC;
 		break;
 	case MMC_RSP_R1B:
-		ctrl = 0x40 | 0x10;
+		ctrl = AU6601_CMD_6_BYTE_CRC | AU6601_CMD_STOP_WAIT_RDY;
 		break;
 	case MMC_RSP_R2:
-		ctrl = 0xc0;
+		ctrl = AU6601_CMD_17_BYTE_CRC;
 		break;
 	case MMC_RSP_PRESENT | MMC_RSP_OPCODE:
 	case MMC_RSP_R3:
-		ctrl = 0x80;
+		ctrl = AU6601_CMD_6_BYTE_WO_CRC;
 		break;
 	default:
 		dev_err(host->dev, "%s: cmd->flag (0x%02x) is not valid\n",
@@ -684,7 +692,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 		break;
 	}
 
-	iowrite8(ctrl | 0x20, host->iobase + AU6601_REG_CMD_CTRL);
+	iowrite8(ctrl | AU6601_CMD_START_XFER, host->iobase + AU6601_CMD_XFER_CTRL);
 }
 
 /*****************************************************************************\
