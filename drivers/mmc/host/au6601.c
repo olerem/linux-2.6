@@ -29,6 +29,7 @@
 #define DRVNAME			"au6601-pci"
 #define PCI_ID_ALCOR_MICRO	0x1aea
 #define PCI_ID_AU6601		0x6601
+#define PCI_ID_AU6601		0x6621
 
 #define MHZ_TO_HZ(freq)	((freq) * 1000 * 1000)
 
@@ -272,8 +273,9 @@
 #define  AU6601_MS_INT_TPC_MASK				0x003d8002
 #define  AU6601_MS_INT_TPC_ERROR			0x003d0000
 
-
-
+struct au6601_dev_cfg {
+	u32 flags;
+};
 
 struct au6601_pll_conf {
 	unsigned int ratio;
@@ -308,6 +310,8 @@ struct au6601_host {
 	unsigned int blocks;		/* remaining PIO blocks */
 	unsigned int requested_blocks;		/* count of requested */
 	int sg_count;	   /* Mapped sg entries */
+
+	struct au6601_dev_cfg	*cfg;
 };
 
 static bool disable_dma;
@@ -328,13 +332,17 @@ static void au6601_prepare_data(struct au6601_host *host,
 static void au6601_finish_data(struct au6601_host *host);
 static void au6601_request_complete(struct au6601_host *host);
 
+static const struct au6601_dev_cfg au6601_cfg = {
+	.flags = 0,
+};
+
+static const struct au6601_dev_cfg au6621_cfg = {
+	.flags = 1,
+};
+
 static const struct pci_device_id pci_ids[] = {
-	{
-		.vendor	 = PCI_ID_ALCOR_MICRO,
-		.device	 = PCI_ID_AU6601,
-		.subvendor      = PCI_ANY_ID,
-		.subdevice      = PCI_ANY_ID,
-	},
+	{ PCI_DEVICE(PCI_ID_ALCOR_MICRO, PCI_ID_AU6601), (kernel_ulong_t)&au6601_cfg },
+	{ PCI_DEVICE(PCI_ID_ALCOR_MICRO, PCI_ID_AU6621), (kernel_ulong_t)&au6621_cfg },
 	{ },
 };
 MODULE_DEVICE_TABLE(pci, pci_ids);
@@ -1272,6 +1280,7 @@ static int __init au6601_dma_alloc(struct au6601_host *host)
 static int __init au6601_pci_probe(struct pci_dev *pdev,
 			   const struct pci_device_id *ent)
 {
+	struct au6601_dev_cfg *cfg = (void *)id->driver_data;
 	struct mmc_host *mmc;
 	struct au6601_host *host;
 	int ret, bar = 0;
@@ -1300,6 +1309,7 @@ static int __init au6601_pci_probe(struct pci_dev *pdev,
 	host->mmc = mmc;
 	host->pdev = pdev;
 	host->dev = &pdev->dev;
+	host->cfg = cfg;
 
 	ret = pci_request_region(pdev, bar, DRVNAME);
 	if (ret) {
@@ -1391,10 +1401,10 @@ static int au6601_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(au6601_pm_ops, au6601_suspend, au6601_resume);
 
 static struct pci_driver au6601_driver = {
-	.name	=	 DRVNAME,
-	.id_table =     pci_ids,
+	.name	=	DRVNAME,
+	.id_table =	pci_ids,
 	.probe	=	au6601_pci_probe,
-	.remove =       au6601_pci_remove,
+	.remove =	au6601_pci_remove,
 	.driver	=	{
 		.pm	= &au6601_pm_ops
 	},
