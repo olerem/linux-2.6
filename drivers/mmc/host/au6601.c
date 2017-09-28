@@ -900,8 +900,7 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 
 	if (intmask & AU6601_INT_OVER_CURRENT_ERR) {
 		dev_warn(host->dev,
-			 "warning: over current detected!\n",
-			 intmask);
+			 "warning: over current detected!\n");
 		intmask &= ~AU6601_INT_OVER_CURRENT_ERR;
 	}
 
