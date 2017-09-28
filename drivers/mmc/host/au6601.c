@@ -29,7 +29,7 @@
 #define DRVNAME					"au6601-pci"
 #define PCI_ID_ALCOR_MICRO			0x1aea
 #define PCI_ID_AU6601				0x6601
-#define PCI_ID_AU6601				0x6621
+#define PCI_ID_AU6621				0x6621
 
 #define MHZ_TO_HZ(freq)				((freq) * 1000 * 1000)
 
@@ -326,8 +326,10 @@ static const struct au6601_dev_cfg au6621_cfg = {
 };
 
 static const struct pci_device_id pci_ids[] = {
-	{ PCI_DEVICE(PCI_ID_ALCOR_MICRO, PCI_ID_AU6601), (kernel_ulong_t)&au6601_cfg },
-	{ PCI_DEVICE(PCI_ID_ALCOR_MICRO, PCI_ID_AU6621), (kernel_ulong_t)&au6621_cfg },
+	{ PCI_DEVICE(PCI_ID_ALCOR_MICRO, PCI_ID_AU6601),
+		.driver_data = (kernel_ulong_t)&au6601_cfg },
+	{ PCI_DEVICE(PCI_ID_ALCOR_MICRO, PCI_ID_AU6621),
+		.driver_data = (kernel_ulong_t)&au6621_cfg },
 	{ },
 };
 MODULE_DEVICE_TABLE(pci, pci_ids);
