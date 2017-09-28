@@ -1268,7 +1268,7 @@ static int __init au6601_dma_alloc(struct au6601_host *host)
 static int __init au6601_pci_probe(struct pci_dev *pdev,
 			   const struct pci_device_id *ent)
 {
-	struct au6601_dev_cfg *cfg = (void *)id->driver_data;
+	struct au6601_dev_cfg *cfg = (void *)ent->driver_data;
 	struct mmc_host *mmc;
 	struct au6601_host *host;
 	int ret, bar = 0;
