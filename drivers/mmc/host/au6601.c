@@ -296,6 +296,7 @@ struct au6601_host {
 	unsigned int requested_blocks;		/* count of requested */
 	int sg_count;	   /* Mapped sg entries */
 
+	u32			irq_status_sd;
 	struct au6601_dev_cfg	*cfg;
 };
 
@@ -865,11 +866,10 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 
 	mutex_lock(&host->cmd_mutex);
 
-	intmask = ioread32(host->iobase + AU6601_REG_INT_STATUS);
-	iowrite32(intmask, host->iobase + AU6601_REG_INT_STATUS);
+	intmask = host->irq_status_sd;
 
 	/* some thing bad */
-	if (unlikely(!intmask || intmask == AU6601_INT_ALL_MASK)) {
+	if (unlikely(!AU6601_INT_ALL_MASK == intmask)) {
 		ret = IRQ_NONE;
 		goto exit;
 	}
@@ -926,6 +926,8 @@ static irqreturn_t au6601_irq(int irq, void *d)
 
 	/* some thing bad */
 	if (status) {
+		host->irq_status_sd = status;
+		iowrite32(status, host->iobase + AU6601_REG_INT_STATUS);
 		au6601_mask_irqs(host);
 		return IRQ_WAKE_THREAD;
 	}
