@@ -857,7 +857,7 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 	}
 }
 
-static irqreturn_t au6601_irq(int irq, void *d)
+static irqreturn_t au6601_irq_thread(int irq, void *d)
 {
 	struct au6601_host *host = d;
 	irqreturn_t ret = IRQ_HANDLED;
@@ -912,7 +912,26 @@ static irqreturn_t au6601_irq(int irq, void *d)
 
 exit:
 	mutex_unlock(&host->cmd_mutex);
+	au6601_unmask_irqs(host);
 	return ret;
+}
+
+
+static irqreturn_t au6601_irq(int irq, void *d)
+{
+	struct au6601_host *host = d;
+	u32 status;
+
+	status = ioread32(host->iobase + AU6601_REG_INT_STATUS);
+
+	/* some thing bad */
+	if (status) {
+		au6601_mask_irqs(host);
+		return IRQ_WAKE_THREAD;
+	}
+
+	return IRQ_NONE;
+
 }
 
 static void au6601_sdc_request(struct mmc_host *mmc, struct mmc_request *mrq)
@@ -935,6 +954,7 @@ static void au6601_sdc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	mutex_unlock(&host->cmd_mutex);
 }
 
+#if 0
 static unsigned int au6601_calc_div(unsigned int clock, unsigned int clock_mod,
 		 const struct au6601_pll_conf *cfg)
 {
@@ -948,6 +968,7 @@ static unsigned int au6601_calc_div(unsigned int clock, unsigned int clock_mod,
 
 	return tmp;
 }
+#endif
 
 static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 {
@@ -1309,9 +1330,9 @@ static int __init au6601_pci_probe(struct pci_dev *pdev,
 	if (!host->iobase)
 		return -ENOMEM;
 
-	ret = devm_request_threaded_irq(&pdev->dev, pdev->irq, NULL, au6601_irq,
-			IRQF_ONESHOT, "au6601 host",
-			host);
+	ret = devm_request_threaded_irq(&pdev->dev, pdev->irq, au6601_irq,
+					au6601_irq_thread, IRQF_SHARED,
+					"au6601", host);
 
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to get irq for data line\n");
