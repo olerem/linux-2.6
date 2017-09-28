@@ -869,7 +869,7 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 	intmask = host->irq_status_sd;
 
 	/* some thing bad */
-	if (unlikely(!AU6601_INT_ALL_MASK == intmask)) {
+	if (unlikely(AU6601_INT_ALL_MASK == intmask) {
 		ret = IRQ_NONE;
 		goto exit;
 	}
