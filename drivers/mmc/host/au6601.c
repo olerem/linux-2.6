@@ -40,7 +40,7 @@
 #define AU6601_MAX_BLOCK_LENGTH			512
 #define AU6601_MAX_DMA_BLOCKS			8
 #define AU6601_DMA_LOCAL_SEGMENTS		3
-#define AU6601_MAX_BLOCK_COUNT			65536
+#define AU6601_MAX_BLOCK_COUNT			8
 
 /* SDMA phy address. Higer then 0x0800.0000? */
 #define AU6601_REG_SDMA_ADDR			0x00
@@ -898,11 +898,11 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 		mmc_detect_change(host->mmc, msecs_to_jiffies(200));
 	}
 
-	if (intmask & 0x100) {
+	if (intmask & AU6601_INT_OVER_CURRENT_ERR) {
 		dev_warn(host->dev,
-			 "0x100 (card INT?) got unknown IRQ with %x\n",
+			 "warning: over current detected!\n",
 			 intmask);
-		intmask &= ~0x100;
+		intmask &= ~AU6601_INT_OVER_CURRENT_ERR;
 	}
 
 	if (intmask & 0xFFFF7FFF) {
