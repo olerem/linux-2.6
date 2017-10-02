@@ -980,7 +980,7 @@ static void au6601_sdc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	mutex_unlock(&host->cmd_mutex);
 }
 
-#if 1
+#if 0
 static unsigned int au6601_calc_div(unsigned int clock, unsigned int clock_mod,
 		 const struct au6601_pll_conf *cfg)
 {
@@ -1044,72 +1044,72 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 		return;
 	}
 
-	if (clock <= 1) {
+	if (clock <= MHZ_TO_HZ(1)) {
 		clk_src = AU6601_CLK_31_25_MHZ;
 		clk_div = 200;
 	}
 
-	if ((1 < clock) && (clock < 5)) {
+	if ((MHZ_TO_HZ(1) < clock) && (clock < MHZ_TO_HZ(5))) {
 		clk_src = AU6601_CLK_31_25_MHZ;
 		clk_div = 16;
 	}
 
-	if ((5 <= clock) && (clock < 10)) {
+	if ((MHZ_TO_HZ(5) <= clock) && (clock < MHZ_TO_HZ(10))) {
 		clk_src = AU6601_CLK_48_MHZ;
 		clk_div = 10;
 	}
 
-	if ((10 <= clock) && (clock < 20)) {
+	if ((MHZ_TO_HZ(10) <= clock) && (clock < MHZ_TO_HZ(20))) {
 		clk_src = AU6601_CLK_48_MHZ;
 		clk_div = 5;
 	}
 
-	if ((20 <= clock) && (clock < 25)) {
+	if ((MHZ_TO_HZ(20) <= clock) && (clock < MHZ_TO_HZ(25))) {
 		clk_src = AU6601_CLK_125_MHZ;
 		clk_div = 7;
 	}
 
-	if ((25 <= clock) && (clock < 40)) {
+	if ((MHZ_TO_HZ(25) <= clock) && (clock < MHZ_TO_HZ(40))) {
 		clk_src = AU6601_CLK_48_MHZ;
 		clk_div = 2;
 	}
 
-	if ((40 <= clock) && (clock < 50)) {
+	if ((MHZ_TO_HZ(40) <= clock) && (clock < MHZ_TO_HZ(50))) {
 		clk_src = AU6601_CLK_384_MHZ;
 		clk_div = 10;
 	}
 
-	if ((50 <= clock) && (clock < 60)) {
+	if ((MHZ_TO_HZ(50) <= clock) && (clock < MHZ_TO_HZ(60))) {
 		clk_src = AU6601_CLK_48_MHZ;
 		clk_div = 1;
 	}
 
-	if ((60 <= clock) && (clock < 80)) {
+	if ((MHZ_TO_HZ(60) <= clock) && (clock < MHZ_TO_HZ(80))) {
 		clk_src = AU6601_CLK_384_MHZ;
 		clk_div = 7;
 	}
 
-	if ((80 <= clock) && (clock < 100)) {
+	if ((MHZ_TO_HZ(80) <= clock) && (clock < MHZ_TO_HZ(100))) {
 		clk_src = AU6601_CLK_384_MHZ;
 		clk_div = 5;
 	}
 
-	if ((100 <= clock) && (clock < 130)) {
+	if ((MHZ_TO_HZ(100) <= clock) && (clock < MHZ_TO_HZ(130))) {
 		clk_src = AU6601_CLK_384_MHZ;
 		clk_div = 4;
 	}
 
-	if ((130 <= clock) && (clock < 194)) {
+	if ((MHZ_TO_HZ(130) <= clock) && (clock < MHZ_TO_HZ(194))) {
 		clk_src = AU6601_CLK_384_MHZ;
 		clk_div = 3;
 	}
 
-	if ((194 <= clock) && (clock < 208)) {
+	if ((MHZ_TO_HZ(194) <= clock) && (clock < MHZ_TO_HZ(208))) {
 		clk_src = AU6601_CLK_384_MHZ;
 		clk_div = 2;
 	}
 
-	if (208 <= clock) {
+	if (MHZ_TO_HZ(208) <= clock) {
 		clk_src = AU6601_CLK_384_MHZ | AU6601_CLK_OVER_CLK;
 		clk_div = 2;
 	}
