@@ -40,7 +40,7 @@
 #define AU6601_MAX_BLOCK_LENGTH			512
 #define AU6601_MAX_DMA_BLOCKS			8
 #define AU6601_DMA_LOCAL_SEGMENTS		3
-#define AU6601_MAX_BLOCK_COUNT			8
+#define AU6601_MAX_BLOCK_COUNT			65536
 
 /* SDMA phy address. Higer then 0x0800.0000? */
 #define AU6601_REG_SDMA_ADDR			0x00
@@ -92,8 +92,9 @@
 
 #define AU6601_CLK_DIVIDER			0x73
 
-#if 0
+#if 1
 /* recheck clock */
+#define AU6601_REG_PLL_CTRL	0x72
  #define AU6601_PLL_DIV8_MASK	0xff
  #define AU6601_PLL_DIV4_MASK	0xf
  #define AU6601_PLL_DIV_S	8
@@ -955,7 +956,7 @@ static void au6601_sdc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	mutex_unlock(&host->cmd_mutex);
 }
 
-#if 0
+#if 1
 static unsigned int au6601_calc_div(unsigned int clock, unsigned int clock_mod,
 		 const struct au6601_pll_conf *cfg)
 {
@@ -969,8 +970,45 @@ static unsigned int au6601_calc_div(unsigned int clock, unsigned int clock_mod,
 
 	return tmp;
 }
-#endif
 
+static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
+{
+	unsigned int clock_out = 0, div = 0, mod = 0, ctrl = AU6601_PLL_EN;
+	//int i, diff = MAX_INT;
+	int i, diff = 0x7fffffff;
+
+	if (clock == 0) {
+		ctrl &= ~AU6601_PLL_EN;
+		goto done;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(au6601_pll_cfg); i++) {
+		int tmp_diff, tmp_clock, tmp_div, tmp_clock_mult;
+		const struct au6601_pll_conf *cfg = &au6601_pll_cfg[i];
+
+		tmp_clock_mult = cfg->ratio * (AU6601_BASE_CLOCK / 10);
+		tmp_div = au6601_calc_div(clock, tmp_clock_mult, cfg);
+		tmp_clock = DIV_ROUND_UP(tmp_clock_mult, tmp_div);
+		tmp_diff = clock - tmp_clock;
+
+		if (tmp_diff >= 0 && tmp_diff < diff) {
+			diff = tmp_diff;
+			mod = cfg->mod;
+			div = tmp_div;
+			clock_out = tmp_clock;
+		}
+	}
+
+done:
+	dev_dbg(host->dev, "set freq %d, use freq %d, %d, %x\n",
+		clock, clock_out, div, mod);
+
+	iowrite16((div - 1) << AU6601_PLL_DIV_S
+		  | mod << AU6601_PLL_MOD_S | ctrl,
+		  host->iobase + AU6601_REG_PLL_CTRL);
+}
+
+#else
 static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 {
 	u16 clk_src;
@@ -1060,6 +1098,7 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 
 	iowrite16(clk_src, host->iobase + AU6601_CLK_SELECT);
 }
+#endif
 
 static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
