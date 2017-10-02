@@ -755,7 +755,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 		break;
 	}
 
-	dev_dbg(host->dev, "xfer ctrl: 0x%02; \n", ctrl);
+	dev_dbg(host->dev, "xfer ctrl: 0x%02x; \n", ctrl);
 	iowrite8(ctrl | AU6601_CMD_START_XFER,
 		 host->iobase + AU6601_CMD_XFER_CTRL);
 }
@@ -1138,7 +1138,10 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	iowrite8(1, host->iobase + AU6601_ACTIVE_CTRL);
 	iowrite8(0, host->iobase + AU6601_OPT);
 
+	dev_dbg(host->dev, "set ios. bus width: %x, power mode: %x\n",
+		ios->bus_width, ios->power_mode);
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
+		dev_dbg(host->dev, "IRQ %x\n", intmask);
 		iowrite8(0x0,
 			 host->iobase + AU6601_REG_BUS_CTRL);
 		au6601_clear_set_reg86(host, 0xc0, 0);
