@@ -458,9 +458,9 @@ static void au6601_read_block(struct au6601_host *host)
 	void __iomem *virt_base = host->virt_base;
 	u8 *buf;
 
-	dev_dbg(host->dev, "PIO reading\n");
-
 	blksize = host->data->blksz * host->requested_blocks;
+	dev_dbg(host->dev, "read block size: 0x%x, %s \n", blksize,
+		host->dma_on ? "DMA" : "PIO");
 
 	while (blksize) {
 		if (!sg_miter_next(&host->sg_miter))
@@ -507,9 +507,10 @@ static void au6601_write_block(struct au6601_host *host)
 	u32 scratch = 0;
 	u8 *buf;
 
-	dev_dbg(host->dev, "PIO writing\n");
-
 	blksize = host->data->blksz * host->requested_blocks;
+
+	dev_dbg(host->dev, "write block size: 0x%x, %s \n", blksize,
+		host->dma_on ? "DMA" : "PIO");
 
 	while (blksize) {
 		if (!sg_miter_next(&host->sg_miter))
@@ -550,6 +551,8 @@ static void au6601_write_block(struct au6601_host *host)
 
 static void au6601_transfer_data(struct au6601_host *host)
 {
+	dev_dbg(host->dev, "transfer data.\n");
+
 	if (host->blocks == 0)
 		return;
 
@@ -567,16 +570,17 @@ static void au6601_transfer_data(struct au6601_host *host)
 		else
 			au6601_finish_data(host);
 	}
-
-	dev_dbg(host->dev, "PIO transfer complete.\n");
 }
 
 static void au6601_finish_command(struct au6601_host *host)
 {
 	struct mmc_command *cmd = host->cmd;
 
+	dev_dbg(host->dev, "Finish CMD\n");
+
 	if (host->cmd->flags & MMC_RSP_PRESENT) {
 		cmd->resp[0] = ioread32be(host->iobase + AU6601_REG_CMD_RSP0);
+		dev_dbg(host->dev, "RSP0: 0x%02\n", cmd->resp[0]);
 		if (host->cmd->flags & MMC_RSP_136) {
 			cmd->resp[1] =
 				ioread32be(host->iobase + AU6601_REG_CMD_RSP1);
@@ -584,14 +588,16 @@ static void au6601_finish_command(struct au6601_host *host)
 				ioread32be(host->iobase + AU6601_REG_CMD_RSP2);
 			cmd->resp[3] =
 				ioread32be(host->iobase + AU6601_REG_CMD_RSP3);
+			dev_dbg(host->dev, "RSP1,2,3: 0x%02 0x%02 0x%02\n",
+				cmd->resp[1], cmd->resp[2], cmd->resp[3]);
 		}
 
 	}
 
 	host->cmd->error = 0;
 
-	/* Finished CMD23, now send actual command. */
 	if (host->cmd == host->mrq->sbc) {
+		dev_dbg(host->dev, "Finished CMD23, now send actual command.\n");
 		host->cmd = NULL;
 		au6601_send_cmd(host, host->mrq->cmd);
 	} else {
@@ -618,6 +624,7 @@ static void au6601_finish_data(struct au6601_host *host)
 	host->dma_on = 0;
 	host->trigger_dma_dac = 0;
 
+	dev_dbg(host->dev, "Finish DATA\n");
 	/*
 	 * The specification states that the block count register must
 	 * be updated, but it does not specify at what point in the
@@ -673,6 +680,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 	if (!data)
 		return;
 
+	dev_dbg(host->dev, "prepare DATA\n");
 	/* Sanity checks */
 	//BUG_ON(data->blksz * data->blocks > 524288);
 	BUG_ON(data->blksz > host->mmc->max_blk_size);
@@ -719,6 +727,8 @@ static void au6601_send_cmd(struct au6601_host *host,
 	host->cmd = cmd;
 	au6601_prepare_data(host, cmd);
 
+	dev_dbg(host->dev, "send CMD. opcode: 0x%02x, arg; \n", cmd->opcode,
+		cmd->arg);
 	iowrite8(cmd->opcode | 0x40, host->iobase + AU6601_REG_CMD_OPCODE);
 	iowrite32be(cmd->arg, host->iobase + AU6601_REG_CMD_ARG);
 
@@ -745,7 +755,9 @@ static void au6601_send_cmd(struct au6601_host *host,
 		break;
 	}
 
-	iowrite8(ctrl | AU6601_CMD_START_XFER, host->iobase + AU6601_CMD_XFER_CTRL);
+	dev_dbg(host->dev, "xfer ctrl: 0x%02; \n", ctrl);
+	iowrite8(ctrl | AU6601_CMD_START_XFER,
+		 host->iobase + AU6601_CMD_XFER_CTRL);
 }
 
 /*****************************************************************************\
@@ -884,6 +896,8 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 		ret = IRQ_NONE;
 		goto exit;
 	}
+
+	dev_dbg(host->dev, "IRQ %x\n", intmask);
 
 	if (intmask & AU6601_INT_CMD_MASK) {
 		dev_dbg(host->dev, "CMD IRQ %x\n", intmask);
