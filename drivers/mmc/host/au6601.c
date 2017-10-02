@@ -1141,7 +1141,6 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	dev_dbg(host->dev, "set ios. bus width: %x, power mode: %x\n",
 		ios->bus_width, ios->power_mode);
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
-		dev_dbg(host->dev, "IRQ %x\n", intmask);
 		iowrite8(0x0,
 			 host->iobase + AU6601_REG_BUS_CTRL);
 		au6601_clear_set_reg86(host, 0xc0, 0);
