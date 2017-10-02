@@ -867,7 +867,17 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 
 	mutex_lock(&host->cmd_mutex);
 
-	intmask = host->irq_status_sd;
+	//intmask = host->irq_status_sd;
+
+	intmask = ioread32(host->iobase + AU6601_REG_INT_STATUS);
+	iowrite32(intmask, host->iobase + AU6601_REG_INT_STATUS);
+
+	/* some thing bad */
+	if (!intmask) {
+		//host->irq_status_sd = status;
+		return IRQ_NONE;
+	}
+
 
 	/* some thing bad */
 	if (unlikely(AU6601_INT_ALL_MASK == intmask)) {
@@ -912,7 +922,7 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 
 exit:
 	mutex_unlock(&host->cmd_mutex);
-	au6601_unmask_irqs(host);
+	//au6601_unmask_irqs(host);
 	return ret;
 }
 
@@ -1370,8 +1380,8 @@ static int __init au6601_pci_probe(struct pci_dev *pdev,
 	if (!host->iobase)
 		return -ENOMEM;
 
-	ret = devm_request_threaded_irq(&pdev->dev, pdev->irq, au6601_irq,
-					au6601_irq_thread, IRQF_SHARED,
+	ret = devm_request_threaded_irq(&pdev->dev, pdev->irq, NULL,
+					au6601_irq_thread, IRQF_SHARED | IRQF_ONESHOT,
 					"au6601", host);
 
 	if (ret) {
