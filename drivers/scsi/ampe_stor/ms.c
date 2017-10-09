@@ -58,7 +58,7 @@ int ms_remove_device(struct _DEVICE_EXTENSION *pdx)
 	tasklet_kill(&ms->card_tasklet);
 	tasklet_kill(&ms->finish_tasklet);
 
-	writel(0x00, ms->ioaddr + MS_INT_ENABLE);
+	au6601_writel(0x00, ms->ioaddr + MS_INT_ENABLE);
 
 	ms_power_off(ms);
 
@@ -193,7 +193,7 @@ void ms_mdl_prepare_data(struct ms_host *ms, u8 force_pio)
 		ms->dma_addr_cur = ms->dma_addr_map;
 		ms->sg_map = ms->sg;
 
-		writel((u32)ms->dma_addr_cur, ms->ioaddr + MS_DMA_ADDRESS);
+		au6601_writel((u32)ms->dma_addr_cur, ms->ioaddr + MS_DMA_ADDRESS);
 		TRACE1(("MAP: ms->sg: %p, ms->dma_addr_map: %x, sg->offset: %x, sg->length: %x, (u32)dma_addr_cur: %x",
 			     ms->sg, (u32)ms->dma_addr_map, ms->sg->offset, ms->sg->length, (u32)ms->dma_addr_cur));
 
@@ -696,7 +696,7 @@ void ms_data_pio_read(struct ms_host *ms)
 
 			while (len) {
 				if (chunk == 0) {
-					scratch = readl(ms->ioaddr + MS_BUFFER_PORT);
+					scratch = au6601_readl(ms->ioaddr + MS_BUFFER_PORT);
 					chunk = 4;
 				}
 
@@ -719,7 +719,7 @@ void ms_data_pio_read(struct ms_host *ms)
 
 		while (buf_len) {
 
-			data = readl(ms->ioaddr + MS_BUFFER_PORT);
+			data = au6601_readl(ms->ioaddr + MS_BUFFER_PORT);
 			cnt = min(buf_len, 4);
 			buf_len -= cnt;
 
@@ -785,7 +785,7 @@ void ms_data_pio_write(struct ms_host *ms)
 				len--;
 
 				if ((chunk == 4) || ((len == 0) && (buf_len == 0))) {
-					writel(scratch, ms->ioaddr + MS_BUFFER_PORT);
+					au6601_writel(scratch, ms->ioaddr + MS_BUFFER_PORT);
 					chunk = 0;
 					scratch = 0;
 				}
@@ -807,7 +807,7 @@ void ms_data_pio_write(struct ms_host *ms)
 				data |= ((u32)*pbuf << (i*8));
 				pbuf++;
 			}
-			writel(data, ms->ioaddr + MS_BUFFER_PORT);
+			au6601_writel(data, ms->ioaddr + MS_BUFFER_PORT);
 		}
 	}
 
@@ -870,12 +870,12 @@ void ms_irq_data(struct ms_host	*ms, u32 intmask)
 
 				TRACE1(("MAP: ms->sg: %p, ms->dma_addr_map: %x, sg->offset: %x, sg->length: %x",
 					ms->sg, (u32)ms->dma_addr_map, ms->sg->offset, ms->sg->length));
-				writel((u32)ms->dma_addr_cur, ms->ioaddr + MS_DMA_ADDRESS);
+				au6601_writel((u32)ms->dma_addr_cur, ms->ioaddr + MS_DMA_ADDRESS);
 			}
 		}
 		else {
 			TRACE(("ms->dma_addr_cur: %x", (u32)ms->dma_addr_cur));
-			writel((u32)ms->dma_addr_cur, ms->ioaddr + MS_DMA_ADDRESS);
+			au6601_writel((u32)ms->dma_addr_cur, ms->ioaddr + MS_DMA_ADDRESS);
 		}
 	}
 
@@ -894,7 +894,7 @@ irqreturn_t ms_irq(struct _DEVICE_EXTENSION *pdx)
 		return IRQ_NONE;
 	}
 
-	intmask = readl(ms->ioaddr + MS_INT_STATUS);
+	intmask = au6601_readl(ms->ioaddr + MS_INT_STATUS);
 	if (!intmask || intmask == 0xffffffff) {
 		//TRACE(("intmask: %x, XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", intmask));
 		return IRQ_NONE;
@@ -909,20 +909,20 @@ irqreturn_t ms_irq(struct _DEVICE_EXTENSION *pdx)
 		else {
 			ms->card_inserted = 1;
 		}
-		writel(intmask & (MS_INT_CARD_INSERT | MS_INT_CARD_REMOVE),	ms->ioaddr + MS_INT_STATUS);
+		au6601_writel(intmask & (MS_INT_CARD_INSERT | MS_INT_CARD_REMOVE),	ms->ioaddr + MS_INT_STATUS);
 		tasklet_schedule(&ms->card_tasklet);
 		intmask &= ~(MS_INT_CARD_INSERT | MS_INT_CARD_REMOVE);
 	}
 
 	if (intmask & MS_INT_DATA_MASK) {
 		TRACE(("intmask & MS_INT_DATA_MASK ..."));
-		writel(intmask & MS_INT_DATA_MASK, ms->ioaddr + MS_INT_STATUS);
+		au6601_writel(intmask & MS_INT_DATA_MASK, ms->ioaddr + MS_INT_STATUS);
 		ms_irq_data(ms, intmask & MS_INT_DATA_MASK);
 		intmask &= ~(MS_INT_DATA_MASK);
 	}
 
 	if (intmask & MS_INT_TPC_MASK) {
-		writel(intmask & MS_INT_TPC_MASK, ms->ioaddr + MS_INT_STATUS);
+		au6601_writel(intmask & MS_INT_TPC_MASK, ms->ioaddr + MS_INT_STATUS);
 
 		if (intmask & MS_INT_TPC_ERROR) {
 			TRACEX(("intmask & (MS_INT_TPC_ERROR), %x, XXXXXXXXXXXXXXXXXXXXXXXXXXX", intmask));
@@ -942,7 +942,7 @@ irqreturn_t ms_irq(struct _DEVICE_EXTENSION *pdx)
 
 	if (intmask & MS_INT_OVER_CURRENT_ERROR) {
 		TRACEX(("Card is consuming too much power, intmask: %x, XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", intmask));
-		writel(MS_INT_OVER_CURRENT_ERROR, ms->ioaddr + MS_INT_STATUS);
+		au6601_writel(MS_INT_OVER_CURRENT_ERROR, ms->ioaddr + MS_INT_STATUS);
 		intmask &= ~MS_INT_OVER_CURRENT_ERROR;
 		if (pdx->uExtEnOverCurrent) {
 			ms->mcard.over_current = pdx->media_card.over_current = (OC_IS_OVER_CURRENT | OC_POWER_IS_ON);
@@ -951,7 +951,7 @@ irqreturn_t ms_irq(struct _DEVICE_EXTENSION *pdx)
 
 	if (intmask) {
 		TRACEX(("Unexpected interrupt: %x, XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", intmask));
-		writel(intmask, ms->ioaddr + MS_INT_STATUS);
+		au6601_writel(intmask, ms->ioaddr + MS_INT_STATUS);
 	}
 
 	return IRQ_HANDLED;
@@ -1116,7 +1116,7 @@ int ms_init_int(struct ms_host *ms)
 		MS_INT_BUF_WRITE_RDY | MS_INT_CARD_INSERT | MS_INT_CARD_REMOVE |
 		MS_INT_TPC_TIMEOUT | MS_INT_CED_ERROR | MS_INT_INT_RESP_ERROR | MS_INT_INT_TIMEOUT | MS_INT_DATA_CRC_ERROR;
 
-	writel(intmask, ms->ioaddr + MS_INT_ENABLE);
+	au6601_writel(intmask, ms->ioaddr + MS_INT_ENABLE);
 
 	return ERR_SUCCESS;
 }
@@ -1161,21 +1161,21 @@ int ms_set_clock(struct ms_host *ms, u32 clock)
 int ms_dumpregs(struct ms_host *ms)
 {
 	TRACEY(("=================================================================="));
-	TRACEY(("CARD_DMA_ADDRESS   (00): %08x", readl(ms->ioaddr + CARD_DMA_ADDRESS)));
-	TRACEY(("CARD_CLK_SELECT    (72): %04x", readw(ms->ioaddr + CARD_CLK_SELECT)));
-	TRACEY(("CARD_ACTIVE_CTRL   (75): %02x", readb(ms->ioaddr + CARD_ACTIVE_CTRL)));
-	TRACEY(("CARD_POWER_CTRL    (70): %02x", readb(ms->ioaddr + CARD_POWER_CONTROL)));
-	TRACEY(("CARD_OUTPUT_ENABLE (7a): %02x", readb(ms->ioaddr + CARD_OUTPUT_ENABLE)));
-	TRACEY(("CARD_XFER_LENGTH   (6c): %08x", readl(ms->ioaddr + CARD_XFER_LENGTH)));
+	TRACEY(("CARD_DMA_ADDRESS   (00): %08x", au6601_readl(ms->ioaddr + CARD_DMA_ADDRESS)));
+	TRACEY(("CARD_CLK_SELECT    (72): %04x", au6601_readw(ms->ioaddr + CARD_CLK_SELECT)));
+	TRACEY(("CARD_ACTIVE_CTRL   (75): %02x", au6601_readb(ms->ioaddr + CARD_ACTIVE_CTRL)));
+	TRACEY(("CARD_POWER_CTRL    (70): %02x", au6601_readb(ms->ioaddr + CARD_POWER_CONTROL)));
+	TRACEY(("CARD_OUTPUT_ENABLE (7a): %02x", au6601_readb(ms->ioaddr + CARD_OUTPUT_ENABLE)));
+	TRACEY(("CARD_XFER_LENGTH   (6c): %08x", au6601_readl(ms->ioaddr + CARD_XFER_LENGTH)));
 
-	TRACEY(("MS_STATUS          (a0): %08x", readl(ms->ioaddr + MS_STATUS)));
-	TRACEY(("MS_BUS_MODE_CTRL   (a1): %02x", readb(ms->ioaddr + MS_BUS_MODE_CTRL)));
-	TRACEY(("MS_TPC_CTRL        (a2): %02x", readb(ms->ioaddr + MS_TPC_CMD)));
-	TRACEY(("MS_TRANSFER_MODE   (a3): %02x", readb(ms->ioaddr + MS_TRANSFER_MODE)));
-	TRACEY(("MS_DATA_PIN_STATE  (a4): %02x", readb(ms->ioaddr + MS_DATA_PIN_STATE)));
+	TRACEY(("MS_STATUS          (a0): %08x", au6601_readl(ms->ioaddr + MS_STATUS)));
+	TRACEY(("MS_BUS_MODE_CTRL   (a1): %02x", au6601_readb(ms->ioaddr + MS_BUS_MODE_CTRL)));
+	TRACEY(("MS_TPC_CTRL        (a2): %02x", au6601_readb(ms->ioaddr + MS_TPC_CMD)));
+	TRACEY(("MS_TRANSFER_MODE   (a3): %02x", au6601_readb(ms->ioaddr + MS_TRANSFER_MODE)));
+	TRACEY(("MS_DATA_PIN_STATE  (a4): %02x", au6601_readb(ms->ioaddr + MS_DATA_PIN_STATE)));
 
-	TRACEY(("MS_INT_STATUS      (b0): %08x", readl(ms->ioaddr + MS_INT_STATUS)));
-	TRACEY(("MS_INT_ENABLE      (b4): %08x", readl(ms->ioaddr + MS_INT_ENABLE)));
+	TRACEY(("MS_INT_STATUS      (b0): %08x", au6601_readl(ms->ioaddr + MS_INT_STATUS)));
+	TRACEY(("MS_INT_ENABLE      (b4): %08x", au6601_readl(ms->ioaddr + MS_INT_ENABLE)));
 	TRACEY(("=================================================================="));
 
 	return ERR_SUCCESS;
@@ -1203,7 +1203,7 @@ void ms_send_tpc(struct ms_host *ms, struct ms_tpc *tpc)
 	}
 
 	TRACE1(("MS_XFER_LENGTH: %x", xfer_length));
-	writel(xfer_length,	ms->ioaddr + MS_XFER_LENGTH);
+	au6601_writel(xfer_length,	ms->ioaddr + MS_XFER_LENGTH);
 
 	xfer_mode = MS_XFER_START;
 
@@ -1217,8 +1217,8 @@ void ms_send_tpc(struct ms_host *ms, struct ms_tpc *tpc)
 		xfer_mode |= MS_XFER_INT_TIMEOUT_CHK;
 	}
 
-	writeb(tpc->tpc_ctrl, ms->ioaddr + MS_TPC_CMD);
-	writeb(xfer_mode, ms->ioaddr + MS_TRANSFER_MODE);
+	au6601_writeb(tpc->tpc_ctrl, ms->ioaddr + MS_TPC_CMD);
+	au6601_writeb(xfer_mode, ms->ioaddr + MS_TRANSFER_MODE);
 }
 
 /*************************************************************************************************/
@@ -1538,7 +1538,7 @@ int ms_tpc_get_int(struct ms_host *ms)
 	ms->int_resp = 0;
 
 	if (ms->mcard.ms_bus_mode & MS_PRO_PARALLEL_MODE) {
-		ms->int_resp = readb(ms->ioaddr + MS_DATA_PIN_STATE);
+		ms->int_resp = au6601_readb(ms->ioaddr + MS_DATA_PIN_STATE);
 		TRACE(("ms->int_resp: %x", ms->int_resp));
 	}
 	else {
@@ -1817,7 +1817,7 @@ int ms_init_card(struct ms_host *ms)
 	memset(mcard, 0, sizeof(struct ms_card));
 
 	if (ms->pdx->current_card_active == SD_CARD_BIT) {
-		writeb(0x00, ms->ioaddr + SD_OPT); // disbale 1.8v
+		au6601_writeb(0x00, ms->ioaddr + SD_OPT); // disbale 1.8v
 	}
 
 	ms_power_off(ms);
@@ -1834,18 +1834,18 @@ START_INIT:
 		goto error_exit;
 	}
 
-	writeb((u8)pdx->uExtPadDrive0, pdx->ioaddr + CARD_PAD_DRIVE0);
-	writeb((u8)pdx->uExtPadDrive1, pdx->ioaddr + CARD_PAD_DRIVE1);
-	writeb((u8)pdx->uExtPadDrive2, pdx->ioaddr + CARD_PAD_DRIVE2);
+	au6601_writeb((u8)pdx->uExtPadDrive0, pdx->ioaddr + CARD_PAD_DRIVE0);
+	au6601_writeb((u8)pdx->uExtPadDrive1, pdx->ioaddr + CARD_PAD_DRIVE1);
+	au6601_writeb((u8)pdx->uExtPadDrive2, pdx->ioaddr + CARD_PAD_DRIVE2);
 
 	ms_card_active_ctrl(ms, TRUE);
 
 	ms_reset(ms);
 
 	ms_power_on(ms);
-	TRACEW(("MS_POWER_CONTROL: %x", readb(ms->ioaddr + MS_POWER_CONTROL)));
+	TRACEW(("MS_POWER_CONTROL: %x", au6601_readb(ms->ioaddr + MS_POWER_CONTROL)));
 
-	writeb((u8)ms->uMsExtHwTimeOutCnt, ms->ioaddr + CARD_TIME_OUT_CTRL);
+	au6601_writeb((u8)ms->uMsExtHwTimeOutCnt, ms->ioaddr + CARD_TIME_OUT_CTRL);
 
 	if (mcard->ptable) {
 		/*ExFreePool(mcard->ptable);*/
@@ -1861,7 +1861,7 @@ START_INIT:
 
 
 	/* Set serial mode */
-	writeb(0x00, ms->ioaddr + MS_BUS_MODE_CTRL);
+	au6601_writeb(0x00, ms->ioaddr + MS_BUS_MODE_CTRL);
 
 	ms_set_clock(ms, ms->uMsExtClock);
 
@@ -2286,12 +2286,12 @@ int msi_set_if_mode(struct ms_host *ms, u8 if_mode)
 
 	if (if_mode == MS_PRO_PARALLEL_4BIT_IF) {
 		/* Set to 4 bit mode */
-		writeb(MS_BUS_4BIT_MODE, ms->ioaddr + MS_BUS_MODE_CTRL);
+		au6601_writeb(MS_BUS_4BIT_MODE, ms->ioaddr + MS_BUS_MODE_CTRL);
 		ms->mcard.ms_bus_mode |= MS_PRO_PARALLEL_MODE;
 	}
 
 	if (if_mode == MS_PRO_PARALLEL_8BIT_IF) {
-		writeb(MS_BUS_8BIT_MODE, ms->ioaddr + MS_BUS_MODE_CTRL);
+		au6601_writeb(MS_BUS_8BIT_MODE, ms->ioaddr + MS_BUS_MODE_CTRL);
 		ms->mcard.ms_bus_mode |= MS_PRO_PARALLEL_MODE;
 	}
 
