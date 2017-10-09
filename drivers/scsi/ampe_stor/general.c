@@ -24,7 +24,7 @@ u32 am_swap_u32(u32 i)
 int card_active_ctrl(struct _DEVICE_EXTENSION *pdx, u8 value)
 {
 
-	writeb(value, pdx->ioaddr + CARD_ACTIVE_CTRL);
+	au6601_writeb(value, pdx->ioaddr + CARD_ACTIVE_CTRL);
 	pdx->current_card_active = value;
 
 	return ERR_SUCCESS;
@@ -35,13 +35,13 @@ int card_reset(struct _DEVICE_EXTENSION	*pdx, u8 card_type)
 {
 	u32	timeout;
 
-	writeb(BUFFER_CTRL_RESET | card_type, pdx->ioaddr + CARD_SOFTWARE_RESET);
+	au6601_writeb(BUFFER_CTRL_RESET | card_type, pdx->ioaddr + CARD_SOFTWARE_RESET);
 
 	/* Wait max 200 ms */
 	timeout = 200;
 
 	/* HW clears the bit when it's done */
-	while (readb(pdx->ioaddr + CARD_SOFTWARE_RESET) & card_type) {
+	while (au6601_readb(pdx->ioaddr + CARD_SOFTWARE_RESET) & card_type) {
 		if (timeout == 0) {
 			TRACEX(("Reset never completed, XXXXXXXXXXXXXXXXXXXXXXXXX"));
 			return ERR_ERROR;
@@ -51,10 +51,10 @@ int card_reset(struct _DEVICE_EXTENSION	*pdx, u8 card_type)
 	}
 
 	if (pdx->dev_is_6621) {
-		writeb(0x01, pdx->ioaddr + CARD_DMA_PAGE_CNT);
+		au6601_writeb(0x01, pdx->ioaddr + CARD_DMA_PAGE_CNT);
 	}
 	else {
-		writeb(0x00, pdx->ioaddr + CARD_DMA_BOUNDARY);
+		au6601_writeb(0x00, pdx->ioaddr + CARD_DMA_BOUNDARY);
 	}	
 
 	return ERR_SUCCESS;
@@ -66,23 +66,23 @@ int card_power_ctrl(struct _DEVICE_EXTENSION *pdx, u8 card_type, u8 pwr_on)
 	u8 card_pwr;
 	u8 output_enable;
 
-	card_pwr = readb(pdx->ioaddr + CARD_POWER_CONTROL);
-	output_enable = readb(pdx->ioaddr + CARD_OUTPUT_ENABLE);
+	card_pwr = au6601_readb(pdx->ioaddr + CARD_POWER_CONTROL);
+	output_enable = au6601_readb(pdx->ioaddr + CARD_OUTPUT_ENABLE);
 
 	TRACE1(("card_pwr: %x, output_enable: %x", card_pwr, output_enable));
 
 	if (pwr_on) {
 		card_pwr |= card_type;
 		output_enable |= card_type;
-		writeb(card_pwr, pdx->ioaddr + CARD_POWER_CONTROL);
+		au6601_writeb(card_pwr, pdx->ioaddr + CARD_POWER_CONTROL);
 		sys_delay(20);
-		writeb(output_enable, pdx->ioaddr + CARD_OUTPUT_ENABLE);
+		au6601_writeb(output_enable, pdx->ioaddr + CARD_OUTPUT_ENABLE);
 	}
 	else {
 		card_pwr &= ~card_type;
 		output_enable &= ~card_type;
-		writeb(output_enable, pdx->ioaddr + CARD_OUTPUT_ENABLE);
-		writeb(card_pwr, pdx->ioaddr + CARD_POWER_CONTROL);
+		au6601_writeb(output_enable, pdx->ioaddr + CARD_OUTPUT_ENABLE);
+		au6601_writeb(card_pwr, pdx->ioaddr + CARD_POWER_CONTROL);
 	}
 
 	return ERR_SUCCESS;
@@ -95,8 +95,8 @@ int card_set_clock(struct _DEVICE_EXTENSION *pdx, u32 clock)
 	u8 clk_div;
 
 	if (clock == 0) {
-		//writew(0, pdx->ioaddr + CARD_CLK_SELECT);
-		writeb(0x00, pdx->ioaddr + SD_DATA_XFER_CTRL);
+		//au6601_writew(0, pdx->ioaddr + CARD_CLK_SELECT);
+		au6601_writeb(0x00, pdx->ioaddr + SD_DATA_XFER_CTRL);
 		return ERR_SUCCESS;
 	}
 
@@ -184,9 +184,9 @@ int card_set_clock(struct _DEVICE_EXTENSION *pdx, u32 clock)
 
 	pdx->current_clk_src = (u8)clk_src;
 
-	writew(clk_src, pdx->ioaddr + CARD_CLK_SELECT);
+	au6601_writew(clk_src, pdx->ioaddr + CARD_CLK_SELECT);
 
-	TRACEW(("CARD_CLK_SELECT: %04x", readw(pdx->ioaddr + CARD_CLK_SELECT)));
+	TRACEW(("CARD_CLK_SELECT: %04x", au6601_readw(pdx->ioaddr + CARD_CLK_SELECT)));
 
 	return ERR_SUCCESS;
 }
@@ -213,5 +213,5 @@ void card_init_interface_mode_ctrl(struct _DEVICE_EXTENSION *pdx)
 		TRACEW(("Without PCIE interface signal clock req control, ......................."));
 	}
 
-	writeb(pdx->current_inf_ctrl, pdx->ioaddr + CARD_INTERFACE_MODE_CTRL);
+	au6601_writeb(pdx->current_inf_ctrl, pdx->ioaddr + CARD_INTERFACE_MODE_CTRL);
 }

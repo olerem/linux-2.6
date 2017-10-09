@@ -53,8 +53,7 @@
 #include <scsi/scsi_eh.h>
 #include <scsi/scsi_host.h>
 
-
-
+#include "au6601_debug.h"
 
 
 #define CR_DRIVER_NAME		"ampe_stor"
