@@ -56,19 +56,19 @@
 
 static inline void au6601_writeb(u8 b, volatile void __iomem *addr)
 {
-	pr_dbg("..wrb: 0x%02x, %p\n", b, addr);
+	pr_debug("..wrb: 0x%02x, %p\n", b, addr);
 	writeb(b, addr);
 }
 
 static inline void au6601_writew(u16 b, volatile void __iomem *addr)
 {
-	pr_dbg("..wrw: 0x%04x, %p\n", b, addr);
+	pr_debug("..wrw: 0x%04x, %p\n", b, addr);
 	writew(b, addr);
 }
 
 static inline void au6601_writel(u32 b, volatile void __iomem *addr)
 {
-	pr_dbg("..wrl: 0x%08x, %p\n", b, addr);
+	pr_debug("..wrl: 0x%08x, %p\n", b, addr);
 	writel(b, addr);
 }
 
@@ -76,7 +76,7 @@ static inline u8 au6601_readb(volatile void __iomem *addr)
 {
 	u8 val;
 	val = readb(addr);
-	pr_dbg("..rrb: 0x%02x, %p\n", val, addr);
+	pr_debug("..rrb: 0x%02x, %p\n", val, addr);
 	return val;
 }
 
@@ -85,7 +85,7 @@ static inline u16 au6601_readw(volatile void __iomem *addr)
 
 	u16 val;
 	val = readw(addr);
-	pr_dbg("..rrw: 0x%04x, %p\n", val, addr);
+	pr_debug("..rrw: 0x%04x, %p\n", val, addr);
 	return val;
 }
 
@@ -94,7 +94,7 @@ static inline u32 au6601_readl(volatile void __iomem *addr)
 
 	u32 val;
 	val = readl(addr);
-	pr_dbg("..rrb: 0x%08x, %p\n", val, addr);
+	pr_debug("..rrb: 0x%08x, %p\n", val, addr);
 	return val;
 }
 
