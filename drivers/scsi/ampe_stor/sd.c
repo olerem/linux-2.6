@@ -98,7 +98,7 @@ int sd_remove_device(struct _DEVICE_EXTENSION *pdx)
 	del_timer_sync(&sd->timeout_timer);
 
 
-	writel(0, sd->ioaddr + SD_INT_ENABLE);
+	au6601_writel(0, sd->ioaddr + SD_INT_ENABLE);
 
 	sd_power_off(sd);
 
@@ -366,7 +366,7 @@ int sd_io_ctrl_x2_mode(struct sd_host *sd, u8 is_write)
 		if ((pdx->uExtX2Mode) && (sd->clock >= 60000)) {
 			if ((pdx->current_clk_src & CARD_CLK_X2_MODE) == 0) {
 				pdx->current_clk_src |= CARD_CLK_X2_MODE;
-				writeb(pdx->current_clk_src, pdx->ioaddr + CARD_CLK_SELECT);
+				au6601_writeb(pdx->current_clk_src, pdx->ioaddr + CARD_CLK_SELECT);
 			}
 		}
 	}
@@ -376,7 +376,7 @@ int sd_io_ctrl_x2_mode(struct sd_host *sd, u8 is_write)
 		if ((pdx->uExtX2Mode) && (sd->clock >= 60000)) {
 			if ((pdx->current_clk_src & CARD_CLK_X2_MODE)) {
 				pdx->current_clk_src &= ~CARD_CLK_X2_MODE;
-				writeb(pdx->current_clk_src, pdx->ioaddr + CARD_CLK_SELECT);
+				au6601_writeb(pdx->current_clk_src, pdx->ioaddr + CARD_CLK_SELECT);
 			}
 		}
 	}
@@ -473,7 +473,7 @@ int sd_scsi_read_write_plus(struct scsi_cmnd *srb, struct _DEVICE_EXTENSION *pdx
 
 		sd_io_ctrl_x2_mode(sd, data.flags & MMC_DATA_WRITE);
 
-		writeb(0x00, sd->ioaddr + SD_DATA_XFER_CTRL);
+		au6601_writeb(0x00, sd->ioaddr + SD_DATA_XFER_CTRL);
 
 		sd_wait_for_cmd(sd, &cmd, MMC_CMD_RETRIES);
 		if (cmd.error) {
@@ -521,7 +521,7 @@ int sd_scsi_read_write_plus(struct scsi_cmnd *srb, struct _DEVICE_EXTENSION *pdx
 	}
 
 
-	//writeb(0x00, sd->ioaddr + SD_DATA_XFER_CTRL);
+	//au6601_writeb(0x00, sd->ioaddr + SD_DATA_XFER_CTRL);
 	TRACE1(("sd->last_cmd: %x, sd->last_lba: %x, ********************************", sd->last_cmd, sd->last_lba));
 	return ERR_SUCCESS;
 
@@ -642,7 +642,7 @@ int sd_scsi_read_write(struct scsi_cmnd *srb, struct _DEVICE_EXTENSION *pdx, u32
 	}
 
 	if (srb->sc_data_direction == DMA_TO_DEVICE) {
-		writeb(0x00, sd->ioaddr + SD_DATA_XFER_CTRL);
+		au6601_writeb(0x00, sd->ioaddr + SD_DATA_XFER_CTRL);
 		err = sd_check_card_is_ready(sd);
 		if (err) {
 			TRACEX(("sd_check_card_is_ready: %x, XXXXXXXXXXXXXXXXXXXXXXXXXXXX", err));
@@ -718,7 +718,7 @@ void sd_transfer_pio_read(struct sd_host *sd)
 
 			while (len) {
 				if (chunk == 0) {
-					scratch = readl(sd->ioaddr + SD_BUFFER_PORT);
+					scratch = au6601_readl(sd->ioaddr + SD_BUFFER_PORT);
 					chunk = 4;
 				}
 
@@ -747,7 +747,7 @@ void sd_transfer_pio_read(struct sd_host *sd)
 		blksize = data->blksz;
 		while (blksize) {
 
-			value = readl(sd->ioaddr + SD_BUFFER_PORT);
+			value = au6601_readl(sd->ioaddr + SD_BUFFER_PORT);
 			chunk_remain = min(blksize, 4);
 			size = min(data->remain_cnt, chunk_remain);
 
@@ -814,7 +814,7 @@ void sd_transfer_pio_write(struct sd_host *sd)
 				len--;
 
 				if ((chunk == 4) || ((len == 0) && (blksize == 0))) {
-					writel(scratch, sd->ioaddr + SD_BUFFER_PORT);
+					au6601_writel(scratch, sd->ioaddr + SD_BUFFER_PORT);
 					chunk = 0;
 					scratch = 0;
 				}
@@ -844,7 +844,7 @@ void sd_transfer_pio_write(struct sd_host *sd)
 				buffer++;
 			}
 
-			writel(value, sd->ioaddr + SD_BUFFER_PORT);
+			au6601_writel(value, sd->ioaddr + SD_BUFFER_PORT);
 
 			if (data->remain_cnt == 0) {
 				return;
@@ -877,7 +877,7 @@ void sd_transfer_data(struct sd_host *sd, struct ampe_sd_data *data)
 	}
 
 
-	writel(xfer_length,	sd->ioaddr + SD_XFER_LENGTH);
+	au6601_writel(xfer_length,	sd->ioaddr + SD_XFER_LENGTH);
 
 
 	xfer_ctrl = SD_DATA_START_XFER;
@@ -892,7 +892,7 @@ void sd_transfer_data(struct sd_host *sd, struct ampe_sd_data *data)
 	}
 
 	TRACE1(("xfer_length: %x, xfer_ctrl: %x", xfer_length, xfer_ctrl));
-	writeb(xfer_ctrl, sd->ioaddr + SD_DATA_XFER_CTRL);
+	au6601_writeb(xfer_ctrl, sd->ioaddr + SD_DATA_XFER_CTRL);
 }
 
 /*************************************************************************************************/
@@ -973,7 +973,7 @@ void sd_prepare_data(struct sd_host *sd, struct ampe_sd_data *data)
 			data->dma_addr_cur = data->dma_addr_map;
 			data->sg_map = data->sg;
 
-			writel((u32)data->dma_addr_cur, sd->ioaddr + SD_DMA_ADDRESS);
+			au6601_writel((u32)data->dma_addr_cur, sd->ioaddr + SD_DMA_ADDRESS);
 			TRACE1(("data->sg: %p, data->dma_addr_map: %x, sg->offset: %x, sg->length: %x, dma_addr_cur: %x",
 				data->sg, (u32)data->dma_addr_map, data->sg->offset, data->sg->length, (u32)data->dma_addr_cur));
 		}
@@ -1013,7 +1013,7 @@ void sd_send_command(struct sd_host *sd, struct sd_command *cmd, u8 is_stop)
 
 	if (is_stop) {
 		sd->stop = cmd;
-		/*writeb(0x00, sd->ioaddr + SD_OPT);*/
+		/*au6601_writeb(0x00, sd->ioaddr + SD_OPT);*/
 	}
 	else {
 		sd->cmd = cmd;
@@ -1027,7 +1027,7 @@ void sd_send_command(struct sd_host *sd, struct sd_command *cmd, u8 is_stop)
 				sd_transfer_data(sd, sd->srq->data);
 			}
 			else {
-				writeb(SD_DATA_WRITE, sd->ioaddr + SD_DATA_XFER_CTRL);
+				au6601_writeb(SD_DATA_WRITE, sd->ioaddr + SD_DATA_XFER_CTRL);
 			}
 		}
 	}
@@ -1037,17 +1037,17 @@ void sd_send_command(struct sd_host *sd, struct sd_command *cmd, u8 is_stop)
 	}
 
 // 	if (cmd->opcode == MMC_STOP_TRANSMISSION) {
-// 		writeb(SD_OPT_CMD_NWT, sd->ioaddr + SD_OPT);
+// 		au6601_writeb(SD_OPT_CMD_NWT, sd->ioaddr + SD_OPT);
 // 	}
 // 	else {
-// 		writeb(0, sd->ioaddr + SD_OPT);
+// 		au6601_writeb(0, sd->ioaddr + SD_OPT);
 // 	}
 
 	TRACE1(("cmd->opcode: (%d), cmd->arg: %08x", cmd->opcode, cmd->arg));
 	cmd_parm = am_swap_u32(cmd->arg);
 
-	writeb((u8)(cmd->opcode | 0x40), sd->ioaddr + SD_COMMAND + 3);
-	writel(cmd_parm, sd->ioaddr + SD_COMMAND + 4);
+	au6601_writeb((u8)(cmd->opcode | 0x40), sd->ioaddr + SD_COMMAND + 3);
+	au6601_writel(cmd_parm, sd->ioaddr + SD_COMMAND + 4);
 
 
 	cmd_ctrl |= SD_CMD_START_XFER;
@@ -1076,7 +1076,7 @@ void sd_send_command(struct sd_host *sd, struct sd_command *cmd, u8 is_stop)
 		mod_timer(&sd->timeout_timer, jiffies + 10 * HZ);
 	}
 
-	writeb(cmd_ctrl, sd->ioaddr + SD_CMD_XFER_CTRL);
+	au6601_writeb(cmd_ctrl, sd->ioaddr + SD_CMD_XFER_CTRL);
 
 }
 
@@ -1091,11 +1091,11 @@ void sd_finish_command(struct sd_host *sd, struct sd_command *cmd)
 	if (cmd->flags & MMC_RSP_PRESENT) {
 		if (cmd->flags & MMC_RSP_136) {
 			for (i = 0; i < 4; i++) {
-				resp = readl(sd->ioaddr + SD_RESPONSE + i*4);
+				resp = au6601_readl(sd->ioaddr + SD_RESPONSE + i*4);
 				cmd->resp[i] = am_swap_u32(resp);
 			}
 		} else {
-			resp = readl(sd->ioaddr + SD_RESPONSE);
+			resp = au6601_readl(sd->ioaddr + SD_RESPONSE);
 			cmd->resp[0] = am_swap_u32(resp);
 			TRACE1(("cmd respond: %x", cmd->resp[0]));
 		}
@@ -1226,11 +1226,11 @@ void sdhci_irq_data(struct sd_host *sd, u32 intmask)
 				data->sg_map = data->sg;
 				TRACE1(("data->sg: %p, data->dma_addr_map: %x, sg->offset: %x, sg->length: %x",
 					data->sg, (u32)data->dma_addr_map, data->sg->offset, data->sg->length));
-				writel((u32)data->dma_addr_cur, sd->ioaddr + SD_DMA_ADDRESS);
+				au6601_writel((u32)data->dma_addr_cur, sd->ioaddr + SD_DMA_ADDRESS);
 			}
 		}
 		else {
-			writel((u32)data->dma_addr_cur, sd->ioaddr + SD_DMA_ADDRESS);
+			au6601_writel((u32)data->dma_addr_cur, sd->ioaddr + SD_DMA_ADDRESS);
 		}
 
 	}
@@ -1252,7 +1252,7 @@ irqreturn_t sdhci_irq(struct _DEVICE_EXTENSION *pdx)
 		return IRQ_NONE;
 	}
 
-	intmask = readl(sd->ioaddr + SD_INT_STATUS);
+	intmask = au6601_readl(sd->ioaddr + SD_INT_STATUS);
 
 	TRACE(("sdhci_irq ===>, intmask: %x", intmask));
 
@@ -1268,7 +1268,7 @@ irqreturn_t sdhci_irq(struct _DEVICE_EXTENSION *pdx)
 		else {
 			sd->card_inserted = 1;
 		}
-		writel(intmask & (SD_INT_CARD_INSERT | SD_INT_CARD_REMOVE), sd->ioaddr + SD_INT_STATUS);
+		au6601_writel(intmask & (SD_INT_CARD_INSERT | SD_INT_CARD_REMOVE), sd->ioaddr + SD_INT_STATUS);
 		tasklet_schedule(&sd->card_tasklet);
 		intmask &= ~(SD_INT_CARD_INSERT | SD_INT_CARD_REMOVE);
 	}
@@ -1278,20 +1278,20 @@ irqreturn_t sdhci_irq(struct _DEVICE_EXTENSION *pdx)
 	}
 
 	if (intmask & SD_INT_CMD_MASK) {
-		writel(intmask & SD_INT_CMD_MASK, sd->ioaddr + SD_INT_STATUS);
+		au6601_writel(intmask & SD_INT_CMD_MASK, sd->ioaddr + SD_INT_STATUS);
 		sdhci_irq_cmd(sd, intmask & SD_INT_CMD_MASK);
 		intmask &= ~(SD_INT_CMD_MASK);
 	}
 
 	if (intmask & SD_INT_DATA_MASK) {
-		writel(intmask & SD_INT_DATA_MASK, sd->ioaddr + SD_INT_STATUS);
+		au6601_writel(intmask & SD_INT_DATA_MASK, sd->ioaddr + SD_INT_STATUS);
 		sdhci_irq_data(sd, intmask & SD_INT_DATA_MASK);
 		intmask &= ~(SD_INT_DATA_MASK);
 	}
 
 	if (intmask & SD_INT_OVER_CURRENT_ERR) {
 		TRACEX(("SD_INT_OVER_CURRENT_ERR, intmask: %x, XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", intmask));
-		writel(SD_INT_OVER_CURRENT_ERR, sd->ioaddr + SD_INT_STATUS);
+		au6601_writel(SD_INT_OVER_CURRENT_ERR, sd->ioaddr + SD_INT_STATUS);
 		intmask &= ~SD_INT_OVER_CURRENT_ERR;
 		if (pdx->uExtEnOverCurrent) {
 			sd->scard.over_current = pdx->media_card.over_current = (OC_IS_OVER_CURRENT | OC_POWER_IS_ON);
@@ -1303,7 +1303,7 @@ irqreturn_t sdhci_irq(struct _DEVICE_EXTENSION *pdx)
 	if (intmask) {
 		TRACEX(("intmask: %x, XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", intmask));
 		sd_dumpregs(sd);
-		writel(intmask, sd->ioaddr + SD_INT_STATUS);
+		au6601_writel(intmask, sd->ioaddr + SD_INT_STATUS);
 	}
 
 	return IRQ_HANDLED;
@@ -1491,7 +1491,7 @@ void sd_reset(struct sd_host *sd)
 	sd_init_int(sd);
 
 	/* hardware will reset this register */
-	writeb(sd->bus_mode, sd->ioaddr + SD_BUS_MODE_CTRL);
+	au6601_writeb(sd->bus_mode, sd->ioaddr + SD_BUS_MODE_CTRL);
 }
 
 /*************************************************************************************************/
@@ -1511,7 +1511,7 @@ void sd_init_int(struct sd_host *sd)
 		SD_INT_READ_BUF_RDY | SD_INT_WRITE_BUF_RDY |
 		SD_INT_DMA_END | SD_INT_DATA_END | SD_INT_CMD_END;
 
-	writel(intmask, sd->ioaddr + SD_INT_ENABLE);
+	au6601_writel(intmask, sd->ioaddr + SD_INT_ENABLE);
 }
 
 /*************************************************************************************************/
@@ -1523,7 +1523,7 @@ void sd_power_on(struct sd_host *sd)
 	card_power_ctrl(sd->pdx, SD_CARD_BIT, TRUE);
 
 	TRACE2(("set SD_DATA_XFER_CTRL: SD_DATA_WRITE ..."));
-	writeb(SD_DATA_WRITE, sd->ioaddr + SD_DATA_XFER_CTRL);
+	au6601_writeb(SD_DATA_WRITE, sd->ioaddr + SD_DATA_XFER_CTRL);
 	sys_delay(200);
 
 }
@@ -1561,7 +1561,7 @@ void sd_set_bus_mode(struct sd_host *sd, u8 bus_mode)
 {
 	TRACE2(("sd_set_bus_mode ===>,bus_mode: %x", bus_mode));
 	sd->bus_mode = bus_mode;
-	writeb(bus_mode, sd->ioaddr + SD_BUS_MODE_CTRL);
+	au6601_writeb(bus_mode, sd->ioaddr + SD_BUS_MODE_CTRL);
 
 }
 
@@ -1572,7 +1572,7 @@ void sd_set_timing_mode(struct sd_host *sd, u8 positive_edge)
 
 	TRACE2(("sd_set_timing_mode ===>"));
 
-	clk_delay = readb(sd->ioaddr + SD_CLK_DELAY);
+	clk_delay = au6601_readb(sd->ioaddr + SD_CLK_DELAY);
 	TRACE2(("read SD_CLK_DELAY: %x", clk_delay));
 	if (positive_edge) {
 		clk_delay |= (SD_CLK_DATA_POSITIVE_EDGE | SD_CLK_CMD_POSITIVE_EDGE);
@@ -1582,7 +1582,7 @@ void sd_set_timing_mode(struct sd_host *sd, u8 positive_edge)
 	}
 
 	TRACE2(("write SD_CLK_DELAY: %x", clk_delay));
-	writeb(clk_delay, sd->ioaddr + SD_CLK_DELAY);
+	au6601_writeb(clk_delay, sd->ioaddr + SD_CLK_DELAY);
 }
 
 /*************************************************************************************************/
@@ -1592,40 +1592,40 @@ void sd_clk_phase_ctrl(struct sd_host *sd, u8 phase)
 
 	TRACE2(("sd_clk_phase_ctrl ===>, phase: %x", phase));
 
-	clk_delay = readb(sd->ioaddr + SD_CLK_DELAY);
+	clk_delay = au6601_readb(sd->ioaddr + SD_CLK_DELAY);
 	TRACE2(("read SD_CLK_DELAY : %x", clk_delay));
 
 	clk_delay &= 0xf0;
 	clk_delay |= phase;
 	TRACE2(("write SD_CLK_DELAY: %x", clk_delay));
 
-	writeb(clk_delay, sd->ioaddr + SD_CLK_DELAY);
+	au6601_writeb(clk_delay, sd->ioaddr + SD_CLK_DELAY);
 }
 
 /*************************************************************************************************/
 void sd_dumpregs(struct sd_host *sd)
 {
 	TRACEY(("=================================================================="));
-	TRACEY(("SD_DEBUG:			(0c): %08x", readl(sd->ioaddr + 0x0c)));
-	TRACEY(("CARD_DMA_ADDRESS   (00): %08x", readl(sd->ioaddr + CARD_DMA_ADDRESS)));
-	TRACEY(("CARD_CLK_SELECT    (72): %04x", readw(sd->ioaddr + CARD_CLK_SELECT)));
-	TRACEY(("CARD_ACTIVE_CTRL   (75): %02x", readb(sd->ioaddr + CARD_ACTIVE_CTRL)));
-	TRACEY(("CARD_POWER_CTRL    (70): %02x", readb(sd->ioaddr + CARD_POWER_CONTROL)));
-	TRACEY(("CARD_OUTPUT_ENABLE (7a): %02x", readb(sd->ioaddr + CARD_OUTPUT_ENABLE)));
-	TRACEY(("CARD_XFER_LENGTH   (6c): %08x", readl(sd->ioaddr + CARD_XFER_LENGTH)));
+	TRACEY(("SD_DEBUG:			(0c): %08x", au6601_readl(sd->ioaddr + 0x0c)));
+	TRACEY(("CARD_DMA_ADDRESS   (00): %08x", au6601_readl(sd->ioaddr + CARD_DMA_ADDRESS)));
+	TRACEY(("CARD_CLK_SELECT    (72): %04x", au6601_readw(sd->ioaddr + CARD_CLK_SELECT)));
+	TRACEY(("CARD_ACTIVE_CTRL   (75): %02x", au6601_readb(sd->ioaddr + CARD_ACTIVE_CTRL)));
+	TRACEY(("CARD_POWER_CTRL    (70): %02x", au6601_readb(sd->ioaddr + CARD_POWER_CONTROL)));
+	TRACEY(("CARD_OUTPUT_ENABLE (7a): %02x", au6601_readb(sd->ioaddr + CARD_OUTPUT_ENABLE)));
+	TRACEY(("CARD_XFER_LENGTH   (6c): %08x", au6601_readl(sd->ioaddr + CARD_XFER_LENGTH)));
 
-	TRACEY(("SD_STATUS_CHK      (80): %02x", readb(sd->ioaddr + SD_STATUS_CHK)));
-	TRACEY(("SD_COMMAND OP      (23): %02x", readb(sd->ioaddr + SD_COMMAND + 3)));
-	TRACEY(("SD_ARGUMENT        (24): %08x", readl(sd->ioaddr + SD_COMMAND + 4)));
-	TRACEY(("SD_CMD_XFER_CTRL   (81): %02x", readb(sd->ioaddr + SD_CMD_XFER_CTRL)));
-	TRACEY(("SD_BUS_MODE_CTRL   (82): %02x", readb(sd->ioaddr + SD_BUS_MODE_CTRL)));
-	TRACEY(("SD_DATA_XFER_CTRL  (83): %02x", readb(sd->ioaddr + SD_DATA_XFER_CTRL)));
-	TRACEY(("SD_DATA_PIN_STATE  (84): %02x", readb(sd->ioaddr + SD_DATA_PIN_STATE)));
-	TRACEY(("SD_OPT             (85): %02x", readb(sd->ioaddr + SD_OPT)));
-	TRACEY(("SD_CLK_DELAY       (86): %02x", readb(sd->ioaddr + SD_CLK_DELAY)));
+	TRACEY(("SD_STATUS_CHK      (80): %02x", au6601_readb(sd->ioaddr + SD_STATUS_CHK)));
+	TRACEY(("SD_COMMAND OP      (23): %02x", au6601_readb(sd->ioaddr + SD_COMMAND + 3)));
+	TRACEY(("SD_ARGUMENT        (24): %08x", au6601_readl(sd->ioaddr + SD_COMMAND + 4)));
+	TRACEY(("SD_CMD_XFER_CTRL   (81): %02x", au6601_readb(sd->ioaddr + SD_CMD_XFER_CTRL)));
+	TRACEY(("SD_BUS_MODE_CTRL   (82): %02x", au6601_readb(sd->ioaddr + SD_BUS_MODE_CTRL)));
+	TRACEY(("SD_DATA_XFER_CTRL  (83): %02x", au6601_readb(sd->ioaddr + SD_DATA_XFER_CTRL)));
+	TRACEY(("SD_DATA_PIN_STATE  (84): %02x", au6601_readb(sd->ioaddr + SD_DATA_PIN_STATE)));
+	TRACEY(("SD_OPT             (85): %02x", au6601_readb(sd->ioaddr + SD_OPT)));
+	TRACEY(("SD_CLK_DELAY       (86): %02x", au6601_readb(sd->ioaddr + SD_CLK_DELAY)));
 
-	TRACEY(("SD_INT_STATUS      (90): %08x", readl(sd->ioaddr + SD_INT_STATUS)));
-	TRACEY(("SD_INT_ENABLE      (94): %08x", readl(sd->ioaddr + SD_INT_ENABLE)));
+	TRACEY(("SD_INT_STATUS      (90): %08x", au6601_readl(sd->ioaddr + SD_INT_STATUS)));
+	TRACEY(("SD_INT_ENABLE      (94): %08x", au6601_readl(sd->ioaddr + SD_INT_ENABLE)));
 	TRACEY(("=================================================================="));
 }
 
@@ -1807,9 +1807,9 @@ void sd_change_pad_drive(struct sd_host *sd)
 
 	TRACE2(("sd_change_pad_drive ===>"));
 	TRACE2(("UHS card, change pad driving to high level ......................"));
-	writeb((u8)pdx->uExtPadDrive0, pdx->ioaddr + CARD_PAD_DRIVE0);
-	writeb((u8)pdx->uExtPadDrive1, pdx->ioaddr + CARD_PAD_DRIVE1);
-	writeb((u8)pdx->uExtPadDrive2, pdx->ioaddr + CARD_PAD_DRIVE2);
+	au6601_writeb((u8)pdx->uExtPadDrive0, pdx->ioaddr + CARD_PAD_DRIVE0);
+	au6601_writeb((u8)pdx->uExtPadDrive1, pdx->ioaddr + CARD_PAD_DRIVE1);
+	au6601_writeb((u8)pdx->uExtPadDrive2, pdx->ioaddr + CARD_PAD_DRIVE2);
 
 }
 
@@ -1859,8 +1859,8 @@ reinit:
 	}
 
 	sd_card_active_ctrl(sd, TRUE);
-	writeb(0, sd->ioaddr + SD_OPT);
-	writeb((u8)sd->uSdExtInitClkDelay, sd->ioaddr + SD_CLK_DELAY);
+	au6601_writeb(0, sd->ioaddr + SD_OPT);
+	au6601_writeb((u8)sd->uSdExtInitClkDelay, sd->ioaddr + SD_CLK_DELAY);
 
 	memset(scard, 0, sizeof(struct sd_card));
 
@@ -1874,10 +1874,10 @@ reinit:
 
 	sd_power_on(sd);
 
-	writeb((u8)sd->uSdExtHwTimeOutCnt, sd->ioaddr + CARD_TIME_OUT_CTRL);
+	au6601_writeb((u8)sd->uSdExtHwTimeOutCnt, sd->ioaddr + CARD_TIME_OUT_CTRL);
 
-	TRACEW(("SD_CARD_WRITE_PROTECT: %x ", readb(sd->ioaddr + SD_CARD_WRITE_PROTECT)));
-	if (readb(sd->ioaddr + SD_CARD_WRITE_PROTECT) & SD_CARD_BIT) {
+	TRACEW(("SD_CARD_WRITE_PROTECT: %x ", au6601_readb(sd->ioaddr + SD_CARD_WRITE_PROTECT)));
+	if (au6601_readb(sd->ioaddr + SD_CARD_WRITE_PROTECT) & SD_CARD_BIT) {
 		TRACE2(("SDHCI_WRITE_PROTECT, .........................."));
 		scard->state |= MMC_STATE_READONLY;
 	}
@@ -2070,12 +2070,12 @@ reinit:
 
 		if (max_dtr > 50000) {
 			sd->sd_in_tuning = 1;
-			writeb(12, sd->ioaddr + CARD_TIME_OUT_CTRL); // 40 * 12 = 480 ms time-out
+			au6601_writeb(12, sd->ioaddr + CARD_TIME_OUT_CTRL); // 40 * 12 = 480 ms time-out
 
 			err = sd30_tuning_sequence(sd);
 
 			sd->sd_in_tuning = 0;
-			writeb((u8)sd->uSdExtHwTimeOutCnt, sd->ioaddr + CARD_TIME_OUT_CTRL);
+			au6601_writeb((u8)sd->uSdExtHwTimeOutCnt, sd->ioaddr + CARD_TIME_OUT_CTRL);
 
 			if (err) {
 				TRACEX(("sd30_tuning_sequence: %x, XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", err));
@@ -3313,7 +3313,7 @@ int sd_mmc_check_bus(struct sd_host *sd)
 	}
 	/* don't check read-data CRC status */
 
-	resp = readl(sd->ioaddr + SD_BUFFER_PORT);
+	resp = au6601_readl(sd->ioaddr + SD_BUFFER_PORT);
 	buf[0] = (u8)resp;
 	buf[1] = (u8)(resp >> 8);
 
@@ -3380,7 +3380,7 @@ int sd30_switch_signal_voltage(struct sd_host *sd)
 	TRACE2(("sd30_switch_signal_voltage ===>"));
 	mask = (SD_OPT_CMD_LINE_LEVEL << 8) | SD_DATA_LINE_LEVEL;
 
-	bus = readw(sd->ioaddr + SD_DATA_PIN_STATE);
+	bus = au6601_readw(sd->ioaddr + SD_DATA_PIN_STATE);
 	TRACE2(("bus state: %x, mask: %x, (bus & mask): %x", bus, mask, bus & mask));
 
 	memset(&cmd, 0x00, sizeof(struct sd_command));
@@ -3398,7 +3398,7 @@ int sd30_switch_signal_voltage(struct sd_host *sd)
 	sys_delay(1);
 	TRACE2(("sd30_switch_signal_voltage command is OK ......"));
 
-	bus = readw(sd->ioaddr + SD_DATA_PIN_STATE);
+	bus = au6601_readw(sd->ioaddr + SD_DATA_PIN_STATE);
 	TRACE2(("bus state: %x, mask: %x, (bus & mask): %x, (after switch signal voltage command)", bus, mask, bus & mask));
 	bus &= mask;
 	if (bus) {
@@ -3407,18 +3407,18 @@ int sd30_switch_signal_voltage(struct sd_host *sd)
 	}
 
 	//sd_set_clock(sd, 0);
-	writeb(0x00, sd->ioaddr + SD_DATA_XFER_CTRL);
+	au6601_writeb(0x00, sd->ioaddr + SD_DATA_XFER_CTRL);
 	sys_delay(1);
 
-	writeb(SD_OPT_SD_18V, sd->ioaddr + SD_OPT);
+	au6601_writeb(SD_OPT_SD_18V, sd->ioaddr + SD_OPT);
 
 	sys_delay(1);
-	writeb(SD_DATA_WRITE, sd->ioaddr + SD_DATA_XFER_CTRL);
+	au6601_writeb(SD_DATA_WRITE, sd->ioaddr + SD_DATA_XFER_CTRL);
 	sd_set_clock(sd, CARD_MIN_CLOCK);
 
 	sys_delay(10);
 
-	bus = readw(sd->ioaddr + SD_DATA_PIN_STATE);
+	bus = au6601_readw(sd->ioaddr + SD_DATA_PIN_STATE);
 	TRACE2(("bus state: %x, mask: %x, (bus & mask): %x, (after set hardware 1.8v)", bus, mask, bus & mask));
 	bus &= mask;
 
@@ -3468,7 +3468,7 @@ int sd30_tuning_cmd(struct sd_host *sd)
 		/* sd card's respond is ok, but hardware see it as wrong respond,
 		   sd card want to send data to host. */
 		/*
-		writeb(SD_DATA_WRITE, sd->ioaddr + SD_DATA_XFER_CTRL);
+		au6601_writeb(SD_DATA_WRITE, sd->ioaddr + SD_DATA_XFER_CTRL);
 		sys_delay(1);
 		*/
 		TRACEX(("cmd.error: %x, XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", cmd.error));

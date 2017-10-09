@@ -28,8 +28,7 @@ EXTRA_CFLAGS := -Idrivers/scsi
 
 obj-$(CONFIG_SCSI_AMPE_STOR) += $(TARGET_MODULE).o
 
-$(TARGET_MODULE)-objs := amcr_stor.o  amcr_scsi.o  general.o sd.o ms.o
-
+$(TARGET_MODULE)-objs := amcr_stor.o  amcr_scsi.o  general.o sd.o ms.o au6601_debug.o
 
 default:
 	make -C /lib/modules/$(shell uname -r)/build/ SUBDIRS=$(PWD) modules

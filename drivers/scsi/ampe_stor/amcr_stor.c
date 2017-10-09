@@ -302,16 +302,16 @@ void amcr_do_before_power_down(struct _DEVICE_EXTENSION *pdx)
 	pci_aspm_ctrl(pdx, 0);
 
 	// disable card detect interrupt
-	writeb(0x00, pdx->ioaddr + CARD_DETECT_STATUS);
+	au6601_writeb(0x00, pdx->ioaddr + CARD_DETECT_STATUS);
 
 	// sd card
 	sd->card_inserted = FALSE;
-	writel(0x00, sd->ioaddr + SD_INT_ENABLE);
+	au6601_writel(0x00, sd->ioaddr + SD_INT_ENABLE);
 	sd_power_off(sd);
 
 	// ms card
 	ms->card_inserted = FALSE;
-	writel(0x00, ms->ioaddr + MS_INT_ENABLE);
+	au6601_writel(0x00, ms->ioaddr + MS_INT_ENABLE);
 	ms_power_off(ms);
 
 
@@ -409,14 +409,14 @@ static int amcr_resume(struct pci_dev *pci)
 
 	card_init_interface_mode_ctrl(pdx);
 
-	writeb((u8)pdx->uExtPadDrive0, pdx->ioaddr + CARD_PAD_DRIVE0);
-	writeb((u8)pdx->uExtPadDrive1, pdx->ioaddr + CARD_PAD_DRIVE1);
-	writeb((u8)pdx->uExtPadDrive2, pdx->ioaddr + CARD_PAD_DRIVE2);
+	au6601_writeb((u8)pdx->uExtPadDrive0, pdx->ioaddr + CARD_PAD_DRIVE0);
+	au6601_writeb((u8)pdx->uExtPadDrive1, pdx->ioaddr + CARD_PAD_DRIVE1);
+	au6601_writeb((u8)pdx->uExtPadDrive2, pdx->ioaddr + CARD_PAD_DRIVE2);
 
 	/* enable card detect interrupt */
-	writeb(0x00, pdx->ioaddr + CARD_DETECT_STATUS);
-	writeb(CARD_DETECT_ENABLE, pdx->ioaddr + CARD_DETECT_STATUS);
-	card_detect = readb(pdx->ioaddr + CARD_DETECT_STATUS);
+	au6601_writeb(0x00, pdx->ioaddr + CARD_DETECT_STATUS);
+	au6601_writeb(CARD_DETECT_ENABLE, pdx->ioaddr + CARD_DETECT_STATUS);
+	card_detect = au6601_readb(pdx->ioaddr + CARD_DETECT_STATUS);
 
 	TRACEW(("card_detect: %x", card_detect));
 
@@ -1134,29 +1134,29 @@ static int amcr_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 
 	card_init_interface_mode_ctrl(pdx);
 
-	writeb((u8)pdx->uExtPadDrive0, pdx->ioaddr + CARD_PAD_DRIVE0);
-	writeb((u8)pdx->uExtPadDrive1, pdx->ioaddr + CARD_PAD_DRIVE1);
-	writeb((u8)pdx->uExtPadDrive2, pdx->ioaddr + CARD_PAD_DRIVE2);
+	au6601_writeb((u8)pdx->uExtPadDrive0, pdx->ioaddr + CARD_PAD_DRIVE0);
+	au6601_writeb((u8)pdx->uExtPadDrive1, pdx->ioaddr + CARD_PAD_DRIVE1);
+	au6601_writeb((u8)pdx->uExtPadDrive2, pdx->ioaddr + CARD_PAD_DRIVE2);
 
-	writeb(0x01, pdx->ioaddr + CHIP_FUNCTION);
-	reg_value = readb(pdx->ioaddr + CHIP_FUNCTION);
+	au6601_writeb(0x01, pdx->ioaddr + CHIP_FUNCTION);
+	reg_value = au6601_readb(pdx->ioaddr + CHIP_FUNCTION);
 	TRACEW(("CHIP_FUNCTION 0x7f: %x, ************************************", reg_value));
 	if (reg_value == 0x21) {
 		pdx->dev_is_6621 = 1;
 	}
 
 	if (pdx->dev_is_6621) {
-		writeb(0x01, pdx->ioaddr + CARD_DMA_PAGE_CNT);
+		au6601_writeb(0x01, pdx->ioaddr + CARD_DMA_PAGE_CNT);
 	}
 	else {
-		writeb(0x00, pdx->ioaddr + CARD_DMA_BOUNDARY);
+		au6601_writeb(0x00, pdx->ioaddr + CARD_DMA_BOUNDARY);
 	}	
 
 
 	/* enable card detect interrupt */
-	writeb(0x00, pdx->ioaddr + CARD_DETECT_STATUS);
-	writeb(CARD_DETECT_ENABLE, pdx->ioaddr + CARD_DETECT_STATUS);
-	card_detect = readb(pdx->ioaddr + CARD_DETECT_STATUS);
+	au6601_writeb(0x00, pdx->ioaddr + CARD_DETECT_STATUS);
+	au6601_writeb(CARD_DETECT_ENABLE, pdx->ioaddr + CARD_DETECT_STATUS);
+	card_detect = au6601_readb(pdx->ioaddr + CARD_DETECT_STATUS);
 
 	TRACEW(("card_detect: %x", card_detect));
 
