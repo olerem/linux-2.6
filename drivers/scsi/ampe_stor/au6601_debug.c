@@ -11,8 +11,7 @@ static void au6601_reg_decode(int write, int size, u32 val,
 
 	switch (addr_short)
 	{
-
-	default: reg = "unkn"
+	default: reg = "unkn";
 	}
 
 	pr_debug("%s.%i: 0x%02x 0x%x (%s)\n", write ? "> w" : "< r",
