@@ -26,6 +26,8 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 
+#include "au6601_debug.h"
+
 #define DRVNAME					"au6601-pci"
 #define PCI_ID_ALCOR_MICRO			0x1aea
 #define PCI_ID_AU6601				0x6601
