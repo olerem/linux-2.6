@@ -34,7 +34,7 @@ static void au6601_reg_decode(int write, int size, u32 val,
 	case 0x7b: reg = "PAD_DRIVE0"; break;
 	case 0x7c: reg = "PAD_DRIVE1"; break;
 	case 0x7d: reg = "PAD_DRIVE2"; break;
-	case 0x7f: reg = ""; break;
+	case 0x7f: reg = "EEPROM"; break;
 	case 0x81: reg = "CMD_XFER_CTRL"; break;
 	case 0x82: reg = "BUS_CTRL"; break;
 	case 0x83: reg = "DATA_XFER_CTRL"; break;
