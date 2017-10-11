@@ -11,6 +11,7 @@ static void au6601_reg_decode(int write, int size, u32 val,
 
 	switch (addr_short)
 	{
+	case 0x00: reg = "dma addr";
 	default: reg = "unkn";
 	}
 
