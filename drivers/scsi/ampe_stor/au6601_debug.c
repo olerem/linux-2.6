@@ -37,6 +37,7 @@ static void au6601_reg_decode(int write, int size, u32 val,
 	case 0x7f: reg = ""; break;
 	case 0x81: reg = "CMD_XFER_CTRL"; break;
 	case 0x82: reg = "BUS_CTRL"; break;
+	case 0x83: reg = "DATA_XFER_CTRL"; break;
 	case 0x84: reg = "DATA_PIN_STATE"; break;
 	case 0x85: reg = "OPT"; break;
 	case 0x86: reg = "CLK_DELAY"; break;
