@@ -7,9 +7,16 @@ static void au6601_reg_decode(int write, int size, u32 val,
 			      volatile void __iomem *addr)
 {
 	unsigned int addr_short = (unsigned int)addr & 0xff;
+	const char *reg;
 
-	pr_debug("%s.%i: 0x%02x 0x%x\n", write ? "> w" : "< r",
-		 size, addr_short, val);
+	switch (addr_short)
+	{
+
+	default: reg = "unkn"
+	}
+
+	pr_debug("%s.%i: 0x%02x 0x%x (%s)\n", write ? "> w" : "< r",
+		 size, addr_short, val, reg);
 }
 
 void au6601_writeb(u8 val, volatile void __iomem *addr)
