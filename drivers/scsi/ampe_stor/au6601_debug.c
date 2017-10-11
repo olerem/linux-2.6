@@ -3,29 +3,38 @@
 #include <asm/bitops.h>
 #include <linux/kernel.h>
 
-void au6601_writeb(u8 b, volatile void __iomem *addr)
+static void au6601_reg_decode(int write, int size, u32 val,
+			      volatile void __iomem *addr)
 {
-	pr_debug("> wb: 0x%02x 0x%x\n", (int)addr & 0xff, b);
-	writeb(b, addr);
+	unsigned int addr_short = (unsigned int)addr & 0xff;
+
+	pr_debug("%s.%i: 0x%02x 0x%x\n", write ? "> w" : "< r",
+		 size, val);
 }
 
-void au6601_writew(u16 b, volatile void __iomem *addr)
+void au6601_writeb(u8 val, volatile void __iomem *addr)
 {
-	pr_debug("> ww: 0x%02x 0x%x\n", (int)addr & 0xff, b);
-	writew(b, addr);
+	au6601_reg_decode(1, 1, val, addr);
+	writeb(val, addr);
 }
 
-void au6601_writel(u32 b, volatile void __iomem *addr)
+void au6601_writew(u16 val, volatile void __iomem *addr)
 {
-	pr_debug("> wl: 0x%02x 0x%x\n", (int)addr & 0xff, b);
-	writel(b, addr);
+	au6601_reg_decode(1, 2, val, addr);
+	writew(val, addr);
+}
+
+void au6601_writel(u32 val, volatile void __iomem *addr)
+{
+	au6601_reg_decode(1, 4, val, addr);
+	writel(val, addr);
 }
 
 u8 au6601_readb(volatile void __iomem *addr)
 {
 	u8 val;
 	val = readb(addr);
-	pr_debug("< rb: 0x%02x 0x%x\n", (int)addr & 0xff, val);
+	au6601_reg_decode(0, 1, val, addr);
 	return val;
 }
 
@@ -33,7 +42,7 @@ u16 au6601_readw(volatile void __iomem *addr)
 {
 	u16 val;
 	val = readw(addr);
-	pr_debug("< rw: 0x%02x 0x%x\n", (int)addr & 0xff, val);
+	au6601_reg_decode(0, 2, val, addr);
 	return val;
 }
 
@@ -41,6 +50,6 @@ u32 au6601_readl(volatile void __iomem *addr)
 {
 	u32 val;
 	val = readl(addr);
-	pr_debug("< rl: 0x%02x 0x%x\n", (int)addr & 0xff, val);
+	au6601_reg_decode(0, 4, val, addr);
 	return val;
 }
