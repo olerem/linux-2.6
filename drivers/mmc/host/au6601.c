@@ -342,20 +342,20 @@ static inline void au6601_rmw(void __iomem *reg, u32 clear, u32 set)
 {
 	u32 var;
 
-	var = ioread32(reg);
+	var = au6601_readl(reg);
 	var &= ~clear;
 	var |= set;
-	iowrite32(var, reg);
+	au6601_writel(var, reg);
 }
 
 static inline void au6601_mask_irqs(struct au6601_host *host)
 {
-	iowrite32(0, host->iobase + AU6601_REG_INT_ENABLE);
+	au6601_writel(0, host->iobase + AU6601_REG_INT_ENABLE);
 }
 
 static inline void au6601_unmask_irqs(struct au6601_host *host)
 {
-	iowrite32(AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK |
+	au6601_writel(AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK |
 		  AU6601_INT_CARD_INSERT | AU6601_INT_CARD_REMOVE |
 		  AU6601_INT_OVER_CURRENT_ERR,
 		  host->iobase + AU6601_REG_INT_ENABLE);
@@ -373,7 +373,7 @@ static inline int au6601_card_busy(struct au6601_host *host)
 {
 	u8 status;
 
-	status = (ioread8(host->iobase + AU6601_DATA_PIN_STATE) &
+	status = (au6601_readb(host->iobase + AU6601_DATA_PIN_STATE) &
 		AU6601_BUS_STAT_DAT_MASK);
 	/* If all data lines are up, then card is not busy */
 	if (status == (AU6601_BUS_STAT_DAT0 | AU6601_BUS_STAT_DAT1 |
@@ -388,9 +388,9 @@ static void au6601_reset(struct au6601_host *host, u8 val)
 {
 	int i;
 
-	iowrite8(val | AU6601_BUF_CTRL_RESET, host->iobase + AU6601_REG_SW_RESET);
+	au6601_writeb(val | AU6601_BUF_CTRL_RESET, host->iobase + AU6601_REG_SW_RESET);
 	for (i = 0; i < 100; i++) {
-		if (!(ioread8(host->iobase + AU6601_REG_SW_RESET) & val))
+		if (!(au6601_readb(host->iobase + AU6601_REG_SW_RESET) & val))
 			return;
 		udelay(50);
 	}
@@ -407,14 +407,14 @@ static void au6601_set_power(struct au6601_host *host,
 {
 	u8 tmp1, tmp2;
 
-	tmp1 = ioread8(host->iobase + AU6601_POWER_CONTROL);
-	tmp2 = ioread8(host->iobase + AU6601_OUTPUT_ENABLE);
+	tmp1 = au6601_readb(host->iobase + AU6601_POWER_CONTROL);
+	tmp2 = au6601_readb(host->iobase + AU6601_OUTPUT_ENABLE);
 	if (set) {
-		iowrite8(tmp1 | value, host->iobase + AU6601_POWER_CONTROL);
-		iowrite8(tmp2 | value, host->iobase + AU6601_OUTPUT_ENABLE);
+		au6601_writeb(tmp1 | value, host->iobase + AU6601_POWER_CONTROL);
+		au6601_writeb(tmp2 | value, host->iobase + AU6601_OUTPUT_ENABLE);
 	} else {
-		iowrite8(tmp2 & ~value, host->iobase + AU6601_OUTPUT_ENABLE);
-		iowrite8(tmp1 & ~value, host->iobase + AU6601_POWER_CONTROL);
+		au6601_writeb(tmp2 & ~value, host->iobase + AU6601_OUTPUT_ENABLE);
+		au6601_writeb(tmp1 & ~value, host->iobase + AU6601_POWER_CONTROL);
 	}
 }
 
@@ -428,7 +428,7 @@ static void au6601_trigger_data_transfer(struct au6601_host *host,
 		ctrl |= AU6601_DATA_WRITE;
 
 	if (dma) {
-		iowrite32(host->phys_base, host->iobase + AU6601_REG_SDMA_ADDR);
+		au6601_writel(host->phys_base, host->iobase + AU6601_REG_SDMA_ADDR);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
 
@@ -443,9 +443,9 @@ static void au6601_trigger_data_transfer(struct au6601_host *host,
 	}
 
 done:
-	iowrite32(data->blksz * host->requested_blocks,
+	au6601_writel(data->blksz * host->requested_blocks,
 		host->iobase + AU6601_REG_BLOCK_SIZE);
-	iowrite8(ctrl | AU6601_DATA_START_XFER, host->iobase + AU6601_DATA_XFER_CTRL);
+	au6601_writeb(ctrl | AU6601_DATA_START_XFER, host->iobase + AU6601_DATA_XFER_CTRL);
 }
 
 /*****************************************************************************\
@@ -484,7 +484,7 @@ static void au6601_read_block(struct au6601_host *host)
 				u32 scratch;
 
 				if (chunk == 0) {
-					scratch = ioread32(host->iobase +
+					scratch = au6601_readl(host->iobase +
 							AU6601_REG_BUFFER);
 					chunk = 4;
 				}
@@ -539,7 +539,7 @@ static void au6601_write_block(struct au6601_host *host)
 
 				if ((chunk == 4) || ((len == 0)
 						&& (blksize == 0))) {
-					iowrite32(scratch, host->iobase +
+					au6601_writel(scratch, host->iobase +
 						AU6601_REG_BUFFER);
 					chunk = 0;
 					scratch = 0;
@@ -581,15 +581,15 @@ static void au6601_finish_command(struct au6601_host *host)
 	dev_dbg(host->dev, "Finish CMD\n");
 
 	if (host->cmd->flags & MMC_RSP_PRESENT) {
-		cmd->resp[0] = ioread32be(host->iobase + AU6601_REG_CMD_RSP0);
+		cmd->resp[0] = au6601_readlbe(host->iobase + AU6601_REG_CMD_RSP0);
 		dev_dbg(host->dev, "RSP0: 0x%02\n", cmd->resp[0]);
 		if (host->cmd->flags & MMC_RSP_136) {
 			cmd->resp[1] =
-				ioread32be(host->iobase + AU6601_REG_CMD_RSP1);
+				au6601_readlbe(host->iobase + AU6601_REG_CMD_RSP1);
 			cmd->resp[2] =
-				ioread32be(host->iobase + AU6601_REG_CMD_RSP2);
+				au6601_readlbe(host->iobase + AU6601_REG_CMD_RSP2);
 			cmd->resp[3] =
-				ioread32be(host->iobase + AU6601_REG_CMD_RSP3);
+				au6601_readlbe(host->iobase + AU6601_REG_CMD_RSP3);
 			dev_dbg(host->dev, "RSP1,2,3: 0x%02 0x%02 0x%02\n",
 				cmd->resp[1], cmd->resp[2], cmd->resp[3]);
 		}
@@ -731,8 +731,8 @@ static void au6601_send_cmd(struct au6601_host *host,
 
 	dev_dbg(host->dev, "send CMD. opcode: 0x%02x, arg; \n", cmd->opcode,
 		cmd->arg);
-	iowrite8(cmd->opcode | 0x40, host->iobase + AU6601_REG_CMD_OPCODE);
-	iowrite32be(cmd->arg, host->iobase + AU6601_REG_CMD_ARG);
+	au6601_writeb(cmd->opcode | 0x40, host->iobase + AU6601_REG_CMD_OPCODE);
+	au6601_writelbe(cmd->arg, host->iobase + AU6601_REG_CMD_ARG);
 
 	switch (mmc_resp_type(cmd)) {
 	case MMC_RSP_NONE:
@@ -758,7 +758,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 	}
 
 	dev_dbg(host->dev, "xfer ctrl: 0x%02x; \n", ctrl);
-	iowrite8(ctrl | AU6601_CMD_START_XFER,
+	au6601_writeb(ctrl | AU6601_CMD_START_XFER,
 		 host->iobase + AU6601_CMD_XFER_CTRL);
 }
 
@@ -883,8 +883,8 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 
 	//intmask = host->irq_status_sd;
 
-	intmask = ioread32(host->iobase + AU6601_REG_INT_STATUS);
-	iowrite32(intmask, host->iobase + AU6601_REG_INT_STATUS);
+	intmask = au6601_readl(host->iobase + AU6601_REG_INT_STATUS);
+	au6601_writel(intmask, host->iobase + AU6601_REG_INT_STATUS);
 
 	/* some thing bad */
 	if (!intmask) {
@@ -948,12 +948,12 @@ static irqreturn_t au6601_irq(int irq, void *d)
 	struct au6601_host *host = d;
 	u32 status;
 
-	status = ioread32(host->iobase + AU6601_REG_INT_STATUS);
+	status = au6601_readl(host->iobase + AU6601_REG_INT_STATUS);
 
 	/* some thing bad */
 	if (status) {
 		host->irq_status_sd = status;
-		iowrite32(status, host->iobase + AU6601_REG_INT_STATUS);
+		au6601_writel(status, host->iobase + AU6601_REG_INT_STATUS);
 		au6601_mask_irqs(host);
 		return IRQ_WAKE_THREAD;
 	}
@@ -972,7 +972,7 @@ static void au6601_sdc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	host->mrq = mrq;
 
 	/* check if card is present then send command and data */
-	if (ioread8(host->iobase + AU6601_DETECT_STATUS) & 0x1)
+	if (au6601_readb(host->iobase + AU6601_DETECT_STATUS) & 0x1)
 		au6601_send_cmd(host, mrq->cmd);
 	else {
 		mrq->cmd->error = -ENOMEDIUM;
@@ -1029,7 +1029,7 @@ done:
 	dev_dbg(host->dev, "set freq %d, use freq %d, %d, %x\n",
 		clock, clock_out, div, mod);
 
-	iowrite16((div - 1) << AU6601_PLL_DIV_S
+	au6601_writew((div - 1) << AU6601_PLL_DIV_S
 		  | mod << AU6601_PLL_MOD_S | ctrl,
 		  host->iobase + AU6601_REG_PLL_CTRL);
 }
@@ -1042,7 +1042,7 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 
 	if (clock == 0) {
 		//writew(0, host->iobase + AU6601_CLK_SELECT);
-		iowrite8(0, host->iobase + AU6601_DATA_XFER_CTRL);
+		au6601_writeb(0, host->iobase + AU6601_DATA_XFER_CTRL);
 		return;
 	}
 
@@ -1122,7 +1122,7 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 	dev_dbg(host->dev, "set freq %d, use div %d, mod %x\n",
 			clock, clk_div, clk_src);
 
-	iowrite16(clk_src, host->iobase + AU6601_CLK_SELECT);
+	au6601_writew(clk_src, host->iobase + AU6601_CLK_SELECT);
 }
 #endif
 
@@ -1133,21 +1133,21 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	host = mmc_priv(mmc);
 	mutex_lock(&host->cmd_mutex);
 
-	iowrite8(0, host->iobase + AU6601_OPT);
-	iowrite8(0x44, host->iobase + AU6601_PAD_DRIVE0);
-	iowrite8(0x44, host->iobase + AU6601_PAD_DRIVE1);
-	iowrite8(0x00, host->iobase + AU6601_PAD_DRIVE2);
-	iowrite8(1, host->iobase + AU6601_ACTIVE_CTRL);
-	iowrite8(0, host->iobase + AU6601_OPT);
+	au6601_writeb(0, host->iobase + AU6601_OPT);
+	au6601_writeb(0x44, host->iobase + AU6601_PAD_DRIVE0);
+	au6601_writeb(0x44, host->iobase + AU6601_PAD_DRIVE1);
+	au6601_writeb(0x00, host->iobase + AU6601_PAD_DRIVE2);
+	au6601_writeb(1, host->iobase + AU6601_ACTIVE_CTRL);
+	au6601_writeb(0, host->iobase + AU6601_OPT);
 
 	dev_dbg(host->dev, "set ios. bus width: %x, power mode: %x\n",
 		ios->bus_width, ios->power_mode);
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
-		iowrite8(0x0,
+		au6601_writeb(0x0,
 			 host->iobase + AU6601_REG_BUS_CTRL);
 		au6601_clear_set_reg86(host, 0xc0, 0);
 	} else if (ios->bus_width == MMC_BUS_WIDTH_4) {
-		iowrite8(AU6601_BUS_WIDTH_4BIT,
+		au6601_writeb(AU6601_BUS_WIDTH_4BIT,
 			 host->iobase + AU6601_REG_BUS_CTRL);
 		au6601_clear_set_reg86(host, 0, 0xc0);
 	} else
@@ -1170,9 +1170,9 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		dev_err(host->dev, "Unknown power parametr\n");
 	}
 
-	iowrite8(AU6601_DATA_WRITE, host->iobase + AU6601_DATA_XFER_CTRL);
-	iowrite8(0x7d, host->iobase + AU6601_TIME_OUT_CTRL);
-	ioread8(host->iobase + AU6601_INTERFACE_MODE_CTRL);
+	au6601_writeb(AU6601_DATA_WRITE, host->iobase + AU6601_DATA_XFER_CTRL);
+	au6601_writeb(0x7d, host->iobase + AU6601_TIME_OUT_CTRL);
+	au6601_readb(host->iobase + AU6601_INTERFACE_MODE_CTRL);
 	mutex_unlock(&host->cmd_mutex);
 }
 
@@ -1303,27 +1303,27 @@ static void au6601_hw_init(struct au6601_host *host)
 {
 	struct au6601_dev_cfg *cfg = host->cfg;
 
-	iowrite8(0, host->iobase + AU6601_INTERFACE_MODE_CTRL);
+	au6601_writeb(0, host->iobase + AU6601_INTERFACE_MODE_CTRL);
 
-	iowrite8(0, host->iobase + AU6601_DETECT_STATUS);
+	au6601_writeb(0, host->iobase + AU6601_DETECT_STATUS);
 	/* disable DlinkMode? disabled by default. */
-	iowrite8(AU6601_DETECT_EN, host->iobase + AU6601_DETECT_STATUS);
+	au6601_writeb(AU6601_DETECT_EN, host->iobase + AU6601_DETECT_STATUS);
 
 	au6601_reset(host, AU6601_RESET_CMD);
 
-	iowrite8(0x1, host->iobase + AU6601_ACTIVE_CTRL);
+	au6601_writeb(0x1, host->iobase + AU6601_ACTIVE_CTRL);
 
 	au6601_unmask_irqs(host);
 
-	iowrite32(0x0, host->iobase + AU6601_REG_BUS_CTRL);
+	au6601_writel(0x0, host->iobase + AU6601_REG_BUS_CTRL);
 
 	au6601_reset(host, AU6601_RESET_DATA);
 
 	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
-	iowrite8(cfg->dma, host->iobase + AU6601_DMA_BOUNDARY);
-	iowrite8(0x0, host->iobase + AU6601_OPT);
-	iowrite8(0x8, host->iobase + AU6601_ACTIVE_CTRL);
-	iowrite32(0x3d00fa, host->iobase + AU6601_MS_INT_ENABLE);
+	au6601_writeb(cfg->dma, host->iobase + AU6601_DMA_BOUNDARY);
+	au6601_writeb(0x0, host->iobase + AU6601_OPT);
+	au6601_writeb(0x8, host->iobase + AU6601_ACTIVE_CTRL);
+	au6601_writel(0x3d00fa, host->iobase + AU6601_MS_INT_ENABLE);
 
 	au6601_set_power(host, 0x1, 0);
 	au6601_set_power(host, 0x8, 0);
@@ -1429,13 +1429,13 @@ static int __init au6601_pci_probe(struct pci_dev *pdev,
 
 static void au6601_hw_uninit(struct au6601_host *host)
 {
-	iowrite8(0x0, host->iobase + AU6601_DETECT_STATUS);
+	au6601_writeb(0x0, host->iobase + AU6601_DETECT_STATUS);
 	au6601_mask_irqs(host);
 
 	au6601_set_power(host, 0x1, 0);
 
-	iowrite8(0x0, host->iobase + AU6601_OPT);
-	iowrite8(0x0, host->iobase + AU6601_MS_INT_ENABLE);
+	au6601_writeb(0x0, host->iobase + AU6601_OPT);
+	au6601_writeb(0x0, host->iobase + AU6601_MS_INT_ENABLE);
 
 	au6601_set_power(host, 0x8, 0);
 }
