@@ -92,3 +92,17 @@ u32 au6601_readl(volatile void __iomem *addr)
 	au6601_reg_decode(0, 4, val, addr);
 	return val;
 }
+
+u32 au6601_read32be(volatile void __iomem *addr)
+{
+	u32 val;
+	val = ioread32be(addr);
+	au6601_reg_decode(0, 4, val, addr);
+	return val;
+}
+
+void au6601_write32be(u32 val, volatile void __iomem *addr)
+{
+	au6601_reg_decode(1, 4, val, addr);
+	iowrite32be(val, addr);
+}
