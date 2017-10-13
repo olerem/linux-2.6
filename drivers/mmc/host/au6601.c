@@ -46,7 +46,7 @@
 
 /* SDMA phy address. Higer then 0x0800.0000? */
 #define AU6601_REG_SDMA_ADDR			0x00
-#define AU6601_SDMA_MASK			0xfffff000
+#define AU6601_SDMA_MASK			0xfffffe00
 
 #define AU6601_DMA_BOUNDARY			0x05
 #define AU6621_DMA_PAGE_CNT			0x05
@@ -1365,12 +1365,6 @@ static int __init au6601_pci_probe(struct pci_dev *pdev,
 	dev_info(&pdev->dev, "AU6601 controller found [%04x:%04x] (rev %x)\n",
 		 (int)pdev->vendor, (int)pdev->device, (int)pdev->revision);
 
-	if (!(pci_resource_flags(pdev, bar) & IORESOURCE_MEM)) {
-		dev_err(&pdev->dev, "BAR %d is not iomem. Aborting.\n", bar);
-		return -ENODEV;
-	}
-
-
 	ret = pcim_enable_device(pdev);
 	if (ret)
 		return ret;
@@ -1388,15 +1382,23 @@ static int __init au6601_pci_probe(struct pci_dev *pdev,
 	host->dev = &pdev->dev;
 	host->cfg = cfg;
 
-	ret = pci_request_region(pdev, bar, DRVNAME);
+	ret = pci_request_regions(pdev, DRVNAME);
 	if (ret) {
 		dev_err(&pdev->dev, "Cannot request region\n");
 		return -ENOMEM;
 	}
 
+	if (!(pci_resource_flags(pdev, bar) & IORESOURCE_MEM)) {
+		dev_err(&pdev->dev, "BAR %d is not iomem. Aborting.\n", bar);
+		ret -ENODEV;
+		goto error_release_regions;
+	}
+
 	host->iobase = pcim_iomap(pdev, bar, 0);
-	if (!host->iobase)
-		return -ENOMEM;
+	if (!host->iobase) {
+		ret -ENOMEM;
+		goto error_release_regions;
+	}
 
 	ret = devm_request_threaded_irq(&pdev->dev, pdev->irq,
 			au6601_irq_thread, NULL, IRQF_SHARED,
@@ -1404,12 +1406,13 @@ static int __init au6601_pci_probe(struct pci_dev *pdev,
 
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to get irq for data line\n");
-		return -ENOMEM;
+		ret -ENOMEM;
+		goto error_release_regions;
 	}
 
 	ret = au6601_dma_alloc(host);
 	if (ret)
-		return ret;
+		goto error_release_regions;
 
 	pci_set_master(pdev);
 	pci_set_drvdata(pdev, host);
@@ -1425,10 +1428,17 @@ static int __init au6601_pci_probe(struct pci_dev *pdev,
 
 	mmc_add_host(mmc);
 	return 0;
+
+error_release_regions:
+	pci_release_regions(pdev);
+	return ret;
 }
 
 static void au6601_hw_uninit(struct au6601_host *host)
 {
+	au6601_reset(host, AU6601_RESET_CMD);
+	au6601_reset(host, AU6601_RESET_DATA);
+
 	au6601_write8(0x0, host->iobase + AU6601_DETECT_STATUS);
 	au6601_mask_irqs(host);
 
@@ -1446,12 +1456,15 @@ static void __exit au6601_pci_remove(struct pci_dev *pdev)
 
 	host = pci_get_drvdata(pdev);
 
-	au6601_hw_uninit(host);
-
 	del_timer_sync(&host->timer);
+
+	au6601_hw_uninit(host);
 
 	mmc_remove_host(host->mmc);
 	mmc_free_host(host->mmc);
+
+	pci_release_regions(pdev);
+	pci_set_drvdata(pdev, NULL);
 }
 
 #ifdef CONFIG_PM_SLEEP
