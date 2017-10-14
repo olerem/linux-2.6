@@ -1425,7 +1425,7 @@ static void au6601_hw_init(struct au6601_host *host)
 	host->dma_on = 0;
 }
 
-static int __init au6601_dma_alloc(struct au6601_host *host)
+static int au6601_dma_alloc(struct au6601_host *host)
 {
 	int ret;
 
@@ -1448,7 +1448,7 @@ static int __init au6601_dma_alloc(struct au6601_host *host)
 	return 0;
 }
 
-static int __init au6601_pci_probe(struct pci_dev *pdev,
+static int au6601_pci_probe(struct pci_dev *pdev,
 			   const struct pci_device_id *ent)
 {
 	struct au6601_dev_cfg *cfg;
@@ -1551,7 +1551,7 @@ static void au6601_hw_uninit(struct au6601_host *host)
 	mutex_unlock(&host->cmd_mutex);
 }
 
-static void __exit au6601_pci_remove(struct pci_dev *pdev)
+static void au6601_pci_remove(struct pci_dev *pdev)
 {
 	struct au6601_host *host;
 
