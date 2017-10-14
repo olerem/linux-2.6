@@ -1531,6 +1531,10 @@ error_release_regions:
 
 static void au6601_hw_uninit(struct au6601_host *host)
 {
+	mutex_lock(&host->cmd_mutex);
+
+	del_timer_sync(&host->timer);
+
 	au6601_reset(host, AU6601_RESET_CMD);
 	au6601_reset(host, AU6601_RESET_DATA);
 
@@ -1543,6 +1547,8 @@ static void au6601_hw_uninit(struct au6601_host *host)
 	au6601_write8(0x0, host->iobase + AU6601_MS_INT_ENABLE);
 
 	au6601_set_power(host, 0x8, 0);
+
+	mutex_unlock(&host->cmd_mutex);
 }
 
 static void __exit au6601_pci_remove(struct pci_dev *pdev)
@@ -1550,8 +1556,6 @@ static void __exit au6601_pci_remove(struct pci_dev *pdev)
 	struct au6601_host *host;
 
 	host = pci_get_drvdata(pdev);
-
-	del_timer_sync(&host->timer);
 
 	au6601_hw_uninit(host);
 
