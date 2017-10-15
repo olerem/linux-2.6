@@ -839,7 +839,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 	host->cmd = cmd;
 	au6601_prepare_data(host, cmd);
 
-	dev_dbg(host->dev, "send CMD. opcode: 0x%02x, arg; \n", cmd->opcode,
+	dev_dbg(host->dev, "send CMD. opcode: 0x%02x, arg; 0x%08x\n", cmd->opcode,
 		cmd->arg);
 	au6601_write8(cmd->opcode | 0x40, host->iobase + AU6601_REG_CMD_OPCODE);
 	au6601_write32be(cmd->arg, host->iobase + AU6601_REG_CMD_ARG);
@@ -1498,13 +1498,13 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 
 	if (!(pci_resource_flags(pdev, bar) & IORESOURCE_MEM)) {
 		dev_err(&pdev->dev, "BAR %d is not iomem. Aborting.\n", bar);
-		ret -ENODEV;
+		ret = -ENODEV;
 		goto error_release_regions;
 	}
 
 	host->iobase = pcim_iomap(pdev, bar, 0);
 	if (!host->iobase) {
-		ret -ENOMEM;
+		ret = -ENOMEM;
 		goto error_release_regions;
 	}
 
@@ -1518,7 +1518,7 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to get irq for data line\n");
-		ret -ENOMEM;
+		ret = -ENOMEM;
 		goto error_release_regions;
 	}
 
