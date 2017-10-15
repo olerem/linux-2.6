@@ -975,20 +975,13 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 
 	mutex_lock(&host->cmd_mutex);
 
-	//intmask = host->irq_status_sd;
-
-	intmask = au6601_read32(host->iobase + AU6601_REG_INT_STATUS);
-	au6601_write32(intmask, host->iobase + AU6601_REG_INT_STATUS);
+	intmask = host->irq_status_sd;
 
 	/* some thing bad */
-	if (!intmask) {
-		//host->irq_status_sd = status;
-		return IRQ_NONE;
-	}
+	if (unlikely(!intmask || AU6601_INT_ALL_MASK == intmask)) {
 
-
-	/* some thing bad */
-	if (unlikely(AU6601_INT_ALL_MASK == intmask)) {
+		dev_warn(host->dev, "0xFFFF7FFF got unhandled IRQ with %x\n",
+			 intmask);
 		ret = IRQ_NONE;
 		goto exit;
 	}
@@ -1032,7 +1025,7 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 
 exit:
 	mutex_unlock(&host->cmd_mutex);
-	//au6601_unmask_irqs(host);
+	au6601_unmask_irqs(host);
 	return ret;
 }
 
@@ -1275,6 +1268,8 @@ static int au6601_signal_voltage_switch(struct mmc_host *mmc,
 {
 	struct au6601_host *host = mmc_priv(mmc);
 
+	mutex_lock(&host->cmd_mutex);
+
 	switch (ios->signal_voltage) {
 	case MMC_SIGNAL_VOLTAGE_330:
 		au6601_rmw(host->iobase + AU6601_OPT, AU6601_OPT_SD_18V, 0);
@@ -1284,8 +1279,9 @@ static int au6601_signal_voltage_switch(struct mmc_host *mmc,
 		break;
 	default:
 		/* No signal voltage switch required */
-		return 0;
 	}
+
+	mutex_unlock(&host->cmd_mutex);
 	return 0;
 }
 
@@ -1496,7 +1492,7 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	}
 
 	ret = devm_request_threaded_irq(&pdev->dev, pdev->irq,
-			au6601_irq_thread, NULL, IRQF_SHARED,
+			au6601_irq, au6601_irq_thread, IRQF_SHARED,
 					"au6601", host);
 
 	if (ret) {
@@ -1531,9 +1527,6 @@ error_release_regions:
 
 static void au6601_hw_uninit(struct au6601_host *host)
 {
-	mutex_lock(&host->cmd_mutex);
-
-	del_timer_sync(&host->timer);
 
 	au6601_reset(host, AU6601_RESET_CMD);
 	au6601_reset(host, AU6601_RESET_DATA);
@@ -1547,8 +1540,6 @@ static void au6601_hw_uninit(struct au6601_host *host)
 	au6601_write8(0x0, host->iobase + AU6601_MS_INT_ENABLE);
 
 	au6601_set_power(host, 0x8, 0);
-
-	mutex_unlock(&host->cmd_mutex);
 }
 
 static void au6601_pci_remove(struct pci_dev *pdev)
@@ -1557,9 +1548,15 @@ static void au6601_pci_remove(struct pci_dev *pdev)
 
 	host = pci_get_drvdata(pdev);
 
-	au6601_hw_uninit(host);
+	mutex_lock(&host->cmd_mutex);
 
+	del_timer_sync(&host->timer);
+
+	au6601_hw_uninit(host);
 	mmc_remove_host(host->mmc);
+
+	mutex_unlock(&host->cmd_mutex);
+
 	mmc_free_host(host->mmc);
 
 	pci_release_regions(pdev);
@@ -1572,7 +1569,9 @@ static int au6601_suspend(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct au6601_host *host = pci_get_drvdata(pdev);
 
+	mutex_lock(&host->cmd_mutex);
 	au6601_hw_uninit(host);
+	mutex_unlock(&host->cmd_mutex);
 	return 0;
 }
 
@@ -1582,7 +1581,9 @@ static int au6601_resume(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct au6601_host *host = pci_get_drvdata(pdev);
 
+	mutex_lock(&host->cmd_mutex);
 	au6601_hw_init(host);
+	mutex_unlock(&host->cmd_mutex);
 	return 0;
 }
 #endif /* CONFIG_PM_SLEEP */
