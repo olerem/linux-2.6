@@ -115,13 +115,17 @@
 
 /* ??? */
 #define AU6601_ACTIVE_CTRL			0x75
-#define AU6601_XD_CARD_ACTIVE			0x10
-#define AU6601_MS_CARD_ACTIVE			0x08
-#define AU6601_SD_CARD_ACTIVE			0x01
+#define AU6601_XD_CARD_ACTIVE			BIT(4)
+/* AU6601_MS_CARD_ACTIVE - will cativate MS card section? */
+#define AU6601_MS_CARD_ACTIVE			BIT(3)
+#define AU6601_SD_CARD_ACTIVE			BIT(0)
 
 /* card slot state? */
 #define AU6601_DETECT_STATUS			0x76
-#define AU6601_DETECT_EN			0x80
+#define AU6601_DETECT_EN			BIT(7)
+#define AU6601_MS_DETECTED			BIT(3)
+#define AU6601_SD_DETECTED			BIT(0)
+#define AU6601_DETECT_STATUS_M			0xf
 /* ??? */
 #define REG_77					0x77
 /* looks like soft reset? */
@@ -442,17 +446,27 @@ static inline void au6601_rmw(void __iomem *reg, u32 clear, u32 set)
 	au6601_write32(var, reg);
 }
 
-static inline void au6601_mask_irqs(struct au6601_host *host)
+static inline void au6601_mask_sd_irqs(struct au6601_host *host)
 {
 	au6601_write32(0, host->iobase + AU6601_REG_INT_ENABLE);
 }
 
-static inline void au6601_unmask_irqs(struct au6601_host *host)
+static inline void au6601_unmask_sd_irqs(struct au6601_host *host)
 {
 	au6601_write32(AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK |
 		  AU6601_INT_CARD_INSERT | AU6601_INT_CARD_REMOVE |
 		  AU6601_INT_OVER_CURRENT_ERR,
 		  host->iobase + AU6601_REG_INT_ENABLE);
+}
+
+static inline void au6601_mask_ms_irqs(struct au6601_host *host)
+{
+	au6601_write32(0, host->iobase + AU6601_MS_INT_ENABLE);
+}
+
+static inline void au6601_unmask_ms_irqs(struct au6601_host *host)
+{
+	au6601_write32(0x3d00fa, host->iobase + AU6601_MS_INT_ENABLE);
 }
 
 static void au6601_clear_set_reg86(struct au6601_host *host, u32 clear, u32 set)
@@ -1025,7 +1039,7 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 
 exit:
 	mutex_unlock(&host->cmd_mutex);
-	au6601_unmask_irqs(host);
+	au6601_unmask_sd_irqs(host);
 	return ret;
 }
 
@@ -1041,7 +1055,7 @@ static irqreturn_t au6601_irq(int irq, void *d)
 	if (status) {
 		host->irq_status_sd = status;
 		au6601_write32(status, host->iobase + AU6601_REG_INT_STATUS);
-		au6601_mask_irqs(host);
+		au6601_mask_sd_irqs(host);
 		return IRQ_WAKE_THREAD;
 	}
 
@@ -1052,16 +1066,22 @@ static irqreturn_t au6601_irq(int irq, void *d)
 static void au6601_sdc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 {
 	struct au6601_host *host;
+	u32 detect;
 
 	host = mmc_priv(mmc);
 	mutex_lock(&host->cmd_mutex);
 
 	host->mrq = mrq;
 
+	detect = au6601_read8(host->iobase + AU6601_DETECT_STATUS)
+		& AU6601_DETECT_STATUS_M;
 	/* check if card is present then send command and data */
-	if (au6601_read8(host->iobase + AU6601_DETECT_STATUS) & 0x1)
+	if (AU6601_SD_DETECTED == detect)
 		au6601_send_cmd(host, mrq->cmd);
 	else {
+		if (detect)
+			dev_warn(host->dev, "unexpected detect status  %x\n",
+				 detect);
 		mrq->cmd->error = -ENOMEDIUM;
 		au6601_request_complete(host);
 	}
@@ -1224,7 +1244,6 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	au6601_write8(0x44, host->iobase + AU6601_PAD_DRIVE0);
 	au6601_write8(0x44, host->iobase + AU6601_PAD_DRIVE1);
 	au6601_write8(0x00, host->iobase + AU6601_PAD_DRIVE2);
-	au6601_write8(1, host->iobase + AU6601_ACTIVE_CTRL);
 	au6601_write8(0, host->iobase + AU6601_OPT);
 
 	dev_dbg(host->dev, "set ios. bus width: %x, power mode: %x\n",
@@ -1257,9 +1276,6 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		dev_err(host->dev, "Unknown power parametr\n");
 	}
 
-	au6601_write8(AU6601_DATA_WRITE, host->iobase + AU6601_DATA_XFER_CTRL);
-	au6601_write8(0x7d, host->iobase + AU6601_TIME_OUT_CTRL);
-	au6601_read8(host->iobase + AU6601_INTERFACE_MODE_CTRL);
 	mutex_unlock(&host->cmd_mutex);
 }
 
@@ -1396,30 +1412,31 @@ static void au6601_hw_init(struct au6601_host *host)
 
 	au6601_write8(0, host->iobase + AU6601_INTERFACE_MODE_CTRL);
 
-	au6601_write8(0, host->iobase + AU6601_DETECT_STATUS);
-	/* disable DlinkMode? disabled by default. */
-	au6601_write8(AU6601_DETECT_EN, host->iobase + AU6601_DETECT_STATUS);
-
 	au6601_reset(host, AU6601_RESET_CMD);
+	au6601_reset(host, AU6601_RESET_DATA);
 
-	au6601_write8(0x1, host->iobase + AU6601_ACTIVE_CTRL);
-
-	au6601_unmask_irqs(host);
+	au6601_write8(AU6601_SD_CARD_ACTIVE, host->iobase + AU6601_ACTIVE_CTRL);
 
 	au6601_write32(0x0, host->iobase + AU6601_REG_BUS_CTRL);
 
-	au6601_reset(host, AU6601_RESET_DATA);
+	au6601_write8(0x7d, host->iobase + AU6601_TIME_OUT_CTRL);
 
 	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
 	au6601_write8(cfg->dma, host->iobase + AU6601_DMA_BOUNDARY);
 	au6601_write8(0x0, host->iobase + AU6601_OPT);
-	au6601_write8(0x8, host->iobase + AU6601_ACTIVE_CTRL);
-	au6601_write32(0x3d00fa, host->iobase + AU6601_MS_INT_ENABLE);
 
 	au6601_set_power(host, 0x1, 0);
 	au6601_set_power(host, 0x8, 0);
 
 	host->dma_on = 0;
+
+	/* now we should be safe to enable IRQs */
+	au6601_unmask_sd_irqs(host);
+	/* currently i don't know how to properly handle MS IRQ
+	 * and HW to test it. */
+	au6601_mask_ms_irqs(host);
+
+	au6601_write8(AU6601_DETECT_EN, host->iobase + AU6601_DETECT_STATUS);
 }
 
 static int au6601_dma_alloc(struct au6601_host *host)
@@ -1492,6 +1509,10 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 		goto error_release_regions;
 	}
 
+	/* make sure irqs are disabled */
+	au6601_mask_sd_irqs(host);
+	au6601_mask_ms_irqs(host);
+
 	ret = devm_request_threaded_irq(&pdev->dev, pdev->irq,
 			au6601_irq, au6601_irq_thread, IRQF_SHARED,
 					"au6601", host);
@@ -1533,12 +1554,12 @@ static void au6601_hw_uninit(struct au6601_host *host)
 	au6601_reset(host, AU6601_RESET_DATA);
 
 	au6601_write8(0x0, host->iobase + AU6601_DETECT_STATUS);
-	au6601_mask_irqs(host);
+	au6601_mask_sd_irqs(host);
+	au6601_mask_ms_irqs(host);
 
 	au6601_set_power(host, 0x1, 0);
 
 	au6601_write8(0x0, host->iobase + AU6601_OPT);
-	au6601_write8(0x0, host->iobase + AU6601_MS_INT_ENABLE);
 
 	au6601_set_power(host, 0x8, 0);
 }
