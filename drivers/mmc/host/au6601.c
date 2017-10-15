@@ -1554,10 +1554,9 @@ static void au6601_pci_remove(struct pci_dev *pdev)
 	del_timer_sync(&host->timer);
 
 	au6601_hw_uninit(host);
-	mmc_remove_host(host->mmc);
-
 	mutex_unlock(&host->cmd_mutex);
 
+	mmc_remove_host(host->mmc);
 	mmc_free_host(host->mmc);
 
 	pci_release_regions(pdev);
