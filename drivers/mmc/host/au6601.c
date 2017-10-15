@@ -849,9 +849,6 @@ static void au6601_send_cmd(struct au6601_host *host,
 		ctrl = AU6601_CMD_NO_RESP;
 		break;
 	case MMC_RSP_R1:
-	case MMC_RSP_R5:
-	case MMC_RSP_R6:
-	case MMC_RSP_R7:
 		ctrl = AU6601_CMD_6_BYTE_CRC;
 		break;
 	case MMC_RSP_R1B:
@@ -861,7 +858,6 @@ static void au6601_send_cmd(struct au6601_host *host,
 		ctrl = AU6601_CMD_17_BYTE_CRC;
 		break;
 	case MMC_RSP_R3:
-	case MMC_RSP_R4:
 		ctrl = AU6601_CMD_6_BYTE_WO_CRC;
 		break;
 	default:
