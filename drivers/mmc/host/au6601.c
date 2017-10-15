@@ -296,7 +296,7 @@ struct au6601_host {
 
 	struct mutex cmd_mutex;
 
-	struct timer_list timer;
+	struct delayed_work timeout_work;
 
 	struct sg_mapping_iter sg_miter;	/* SG state for PIO */
 	unsigned int blocks;		/* remaining PIO blocks */
@@ -829,12 +829,13 @@ static void au6601_send_cmd(struct au6601_host *host,
 	u8 ctrl; /* some mysterious flags and control */
 	unsigned long timeout;
 
+	cancel_delayed_work_sync(&host->timeout_work);
+
 	timeout = jiffies;
 	if (!cmd->data && cmd->busy_timeout > 9000)
 		timeout += DIV_ROUND_UP(cmd->busy_timeout, 1000) * HZ + HZ;
 	else
 		timeout += 10 * HZ;
-	mod_timer(&host->timer, timeout);
 
 	host->cmd = cmd;
 	au6601_prepare_data(host, cmd);
@@ -869,6 +870,8 @@ static void au6601_send_cmd(struct au6601_host *host,
 	dev_dbg(host->dev, "xfer ctrl: 0x%02x; \n", ctrl);
 	au6601_write8(ctrl | AU6601_CMD_START_XFER,
 		 host->iobase + AU6601_CMD_XFER_CTRL);
+
+	schedule_delayed_work(&host->timeout_work, timeout);
 }
 
 /*****************************************************************************\
@@ -1323,7 +1326,7 @@ static void au6601_request_complete(struct au6601_host *host)
 	if (!host->mrq)
 		return;
 
-	del_timer(&host->timer);
+	cancel_delayed_work_sync(&host->timeout_work);
 
 	mrq = host->mrq;
 
@@ -1348,12 +1351,11 @@ static void au6601_request_complete(struct au6601_host *host)
 	mmc_request_done(host->mmc, mrq);
 }
 
-static void au6601_timeout_timer(unsigned long data)
+static void au6601_timeout_timer(struct work_struct *work)
 {
-	struct au6601_host *host;
-
-	host = (struct au6601_host *)data;
-
+	struct delayed_work *d = to_delayed_work(work);
+	struct au6601_host *host = container_of(d, struct au6601_host,
+						timeout_work);
 	mutex_lock(&host->cmd_mutex);
 
 	if (host->mrq) {
@@ -1533,7 +1535,7 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	/*
 	 * Init tasklets.
 	 */
-	setup_timer(&host->timer, au6601_timeout_timer, (unsigned long)host);
+	INIT_DELAYED_WORK(&host->timeout_work, au6601_timeout_timer);
 
 	au6601_init_mmc(host);
 	au6601_hw_init(host);
@@ -1571,7 +1573,7 @@ static void au6601_pci_remove(struct pci_dev *pdev)
 
 	mutex_lock(&host->cmd_mutex);
 
-	del_timer_sync(&host->timer);
+	cancel_delayed_work_sync(&host->timeout_work);
 
 	au6601_hw_uninit(host);
 	mutex_unlock(&host->cmd_mutex);
