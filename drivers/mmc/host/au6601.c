@@ -1279,6 +1279,7 @@ static int au6601_signal_voltage_switch(struct mmc_host *mmc,
 		break;
 	default:
 		/* No signal voltage switch required */
+		break;
 	}
 
 	mutex_unlock(&host->cmd_mutex);
