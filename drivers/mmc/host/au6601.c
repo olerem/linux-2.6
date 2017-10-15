@@ -148,13 +148,15 @@
 #define	AU6601_CMD_6_BYTE_CRC			0x40
 #define	AU6601_CMD_START_XFER			0x20
 #define	AU6601_CMD_STOP_WAIT_RDY		0x10
-#define	AU6601_CMD_NO_RESP				0x00
+#define	AU6601_CMD_NO_RESP			0x00
 
-#define AU6601_REG_BUS_CTRL				0x82
-#define AU6601_BUS_WIDTH_4BIT			BIT(5)
+#define AU6601_REG_BUS_CTRL			0x82
+#define AU6601_BUS_WIDTH_4BIT			0x20
+#define AU6601_BUS_WIDTH_8BIT			0x10
+#define AU6601_BUS_WIDTH_1BIT			0x00
 
 #define AU6601_DATA_XFER_CTRL			0x83
-#define AU6601_DATA_WRITE				BIT(7)
+#define AU6601_DATA_WRITE			BIT(7)
 #define AU6601_DATA_DMA_MODE			BIT(6)
 #define AU6601_DATA_START_XFER			BIT(0)
 
@@ -847,6 +849,9 @@ static void au6601_send_cmd(struct au6601_host *host,
 		ctrl = AU6601_CMD_NO_RESP;
 		break;
 	case MMC_RSP_R1:
+	case MMC_RSP_R5:
+	case MMC_RSP_R6:
+	case MMC_RSP_R7:
 		ctrl = AU6601_CMD_6_BYTE_CRC;
 		break;
 	case MMC_RSP_R1B:
@@ -855,8 +860,8 @@ static void au6601_send_cmd(struct au6601_host *host,
 	case MMC_RSP_R2:
 		ctrl = AU6601_CMD_17_BYTE_CRC;
 		break;
-	case MMC_RSP_PRESENT | MMC_RSP_OPCODE:
 	case MMC_RSP_R3:
+	case MMC_RSP_R4:
 		ctrl = AU6601_CMD_6_BYTE_WO_CRC;
 		break;
 	default:
@@ -1411,7 +1416,8 @@ static void au6601_hw_init(struct au6601_host *host)
 
 	au6601_write8(AU6601_SD_CARD_ACTIVE, host->iobase + AU6601_ACTIVE_CTRL);
 
-	au6601_write32(0x0, host->iobase + AU6601_REG_BUS_CTRL);
+	au6601_write8(AU6601_BUS_WIDTH_1BIT, host->iobase + AU6601_REG_BUS_CTRL);
+	au6601_write8(0, host->iobase + AU6601_DATA_XFER_CTRL);
 
 	au6601_write8(0x7d, host->iobase + AU6601_TIME_OUT_CTRL);
 	au6601_write8(0x44, host->iobase + AU6601_PAD_DRIVE0);
