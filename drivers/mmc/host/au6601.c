@@ -1240,12 +1240,6 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	host = mmc_priv(mmc);
 	mutex_lock(&host->cmd_mutex);
 
-	au6601_write8(0, host->iobase + AU6601_OPT);
-	au6601_write8(0x44, host->iobase + AU6601_PAD_DRIVE0);
-	au6601_write8(0x44, host->iobase + AU6601_PAD_DRIVE1);
-	au6601_write8(0x00, host->iobase + AU6601_PAD_DRIVE2);
-	au6601_write8(0, host->iobase + AU6601_OPT);
-
 	dev_dbg(host->dev, "set ios. bus width: %x, power mode: %x\n",
 		ios->bus_width, ios->power_mode);
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
@@ -1420,6 +1414,9 @@ static void au6601_hw_init(struct au6601_host *host)
 	au6601_write32(0x0, host->iobase + AU6601_REG_BUS_CTRL);
 
 	au6601_write8(0x7d, host->iobase + AU6601_TIME_OUT_CTRL);
+	au6601_write8(0x44, host->iobase + AU6601_PAD_DRIVE0);
+	au6601_write8(0x44, host->iobase + AU6601_PAD_DRIVE1);
+	au6601_write8(0x00, host->iobase + AU6601_PAD_DRIVE2);
 
 	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
 	au6601_write8(cfg->dma, host->iobase + AU6601_DMA_BOUNDARY);
