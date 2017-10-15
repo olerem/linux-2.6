@@ -424,7 +424,7 @@ static u32 au6601_read32(volatile void __iomem *addr)
 	return val;
 }
 
-static u32 au6601_read32be(volatile void __iomem *addr)
+static u32 au6601_read32be(void __iomem *addr)
 {
 	u32 val;
 	val = ioread32be(addr);
@@ -432,7 +432,7 @@ static u32 au6601_read32be(volatile void __iomem *addr)
 	return val;
 }
 
-static void au6601_write32be(u32 val, volatile void __iomem *addr)
+static void au6601_write32be(u32 val, void __iomem *addr)
 {
 	au6601_reg_decode(1, 4, val, addr);
 	iowrite32be(val, addr);
@@ -571,7 +571,7 @@ static void au6601_read_block(struct au6601_host *host)
 	u8 *buf;
 
 	blksize = host->data->blksz * host->requested_blocks;
-	dev_dbg(host->dev, "read block size: 0x%x, %s \n", blksize,
+	dev_dbg(host->dev, "read block size: 0x%lx, %s \n", blksize,
 		host->dma_on ? "DMA" : "PIO");
 
 	while (blksize) {
@@ -692,7 +692,7 @@ static void au6601_finish_command(struct au6601_host *host)
 
 	if (host->cmd->flags & MMC_RSP_PRESENT) {
 		cmd->resp[0] = au6601_read32be(host->iobase + AU6601_REG_CMD_RSP0);
-		dev_dbg(host->dev, "RSP0: 0x%02\n", cmd->resp[0]);
+		dev_dbg(host->dev, "RSP0: 0x%02x\n", cmd->resp[0]);
 		if (host->cmd->flags & MMC_RSP_136) {
 			cmd->resp[1] =
 				au6601_read32be(host->iobase + AU6601_REG_CMD_RSP1);
@@ -700,7 +700,7 @@ static void au6601_finish_command(struct au6601_host *host)
 				au6601_read32be(host->iobase + AU6601_REG_CMD_RSP2);
 			cmd->resp[3] =
 				au6601_read32be(host->iobase + AU6601_REG_CMD_RSP3);
-			dev_dbg(host->dev, "RSP1,2,3: 0x%02 0x%02 0x%02\n",
+			dev_dbg(host->dev, "RSP1,2,3: 0x%02x 0x%02x 0x%02x\n",
 				cmd->resp[1], cmd->resp[2], cmd->resp[3]);
 		}
 
