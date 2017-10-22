@@ -185,22 +185,22 @@
 
 #define AU6601_REG_INT_STATUS			0x90
 #define AU6601_REG_INT_ENABLE			0x94
-#define AU6601_INT_CMD_END			0x00000001
-#define AU6601_INT_DATA_END			0x00000002
-#define AU6601_INT_DMA_END			0x00000008
-#define AU6601_INT_WRITE_BUF_RDY		0x00000010
-#define AU6601_INT_READ_BUF_RDY			0x00000020
-#define AU6601_INT_CARD_REMOVE			0x00000040
-#define AU6601_INT_CARD_INSERT			0x00000080
-#define AU6601_INT_OVER_CURRENT_ERR		0x00000100
-#define AU6601_INT_ERROR			0x00008000
-#define AU6601_INT_CMD_TIMEOUT_ERR		0x00010000
-#define AU6601_INT_CMD_CRC_ERR			0x00020000
-#define AU6601_INT_CMD_END_BIT_ERR		0x00040000
-#define AU6601_INT_CMD_INDEX_ERR		0x00080000
-#define AU6601_INT_DATA_TIMEOUT_ERR		0x00100000
-#define AU6601_INT_DATA_CRC_ERR			0x00200000
-#define AU6601_INT_DATA_END_BIT_ERR		0x00400000
+#define AU6601_INT_DATA_END_BIT_ERR		BIT(22)
+#define AU6601_INT_DATA_CRC_ERR			BIT(21)
+#define AU6601_INT_DATA_TIMEOUT_ERR		BIT(20)
+#define AU6601_INT_CMD_INDEX_ERR		BIT(19)
+#define AU6601_INT_CMD_END_BIT_ERR		BIT(18)
+#define AU6601_INT_CMD_CRC_ERR			BIT(17)
+#define AU6601_INT_CMD_TIMEOUT_ERR		BIT(16)
+#define AU6601_INT_ERROR			BIT(15)
+#define AU6601_INT_OVER_CURRENT_ERR		BIT(8)
+#define AU6601_INT_CARD_INSERT			BIT(7)
+#define AU6601_INT_CARD_REMOVE			BIT(6)
+#define AU6601_INT_READ_BUF_RDY			BIT(5)
+#define AU6601_INT_WRITE_BUF_RDY		BIT(4)
+#define AU6601_INT_DMA_END			BIT(3)
+#define AU6601_INT_DATA_END			BIT(1)
+#define AU6601_INT_CMD_END			BIT(0)
 
 #define AU6601_INT_NORMAL_MASK			0x00007FFF
 #define AU6601_INT_ERROR_MASK			0xFFFF8000
@@ -218,9 +218,9 @@
 #define AU6601_MS_STATUS			0xa0
 
 #define AU6601_MS_BUS_MODE_CTRL			0xa1
-#define AU6601_MS_BUS_1BIT_MODE			0x00
-#define AU6601_MS_BUS_4BIT_MODE			0x01
 #define AU6601_MS_BUS_8BIT_MODE			0x03
+#define AU6601_MS_BUS_4BIT_MODE			0x01
+#define AU6601_MS_BUS_1BIT_MODE			0x00
 
 #define AU6601_MS_TPC_CMD			0xa2
 #define AU6601_MS_TPC_READ_PAGE_DATA		0x02
@@ -235,32 +235,29 @@
 #define AU6601_MS_TPC_WRITE_SHORT_DATA		0x0C
 
 #define AU6601_MS_TRANSFER_MODE			0xa3
-#define	AU6601_MS_XFER_START			0x01
-#define	AU6601_MS_XFER_DMA_ENABLE		0x02
-#define	AU6601_MS_XFER_INT_TIMEOUT_CHK		0x04
+#define	AU6601_MS_XFER_INT_TIMEOUT_CHK		BIT(2)
+#define	AU6601_MS_XFER_DMA_ENABLE		BIT(1)
+#define	AU6601_MS_XFER_START			BIT(0)
 
 #define AU6601_MS_DATA_PIN_STATE		0xa4
 
 #define AU6601_MS_INT_STATUS			0xb0
 #define AU6601_MS_INT_ENABLE			0xb4
-#define AU6601_MS_INT_TPC_END			0x00000002
-#define AU6601_MS_INT_DMA_END			0x00000008
-#define AU6601_MS_INT_BUF_WRITE_RDY		0x00000010
-#define AU6601_MS_INT_BUF_READ_RDY		0x00000020
-#define AU6601_MS_INT_CARD_REMOVE		0x00000040
-#define AU6601_MS_INT_CARD_INSERT		0x00000080
-#define AU6601_MS_INT_ERROR			0x00008000
+#define AU6601_MS_INT_OVER_CURRENT_ERROR	BIT(23)
+#define AU6601_MS_INT_DATA_CRC_ERROR		BIT(21)
+#define AU6601_MS_INT_INT_TIMEOUT		BIT(20)
+#define AU6601_MS_INT_INT_RESP_ERROR		BIT(19)
+#define AU6601_MS_INT_CED_ERROR			BIT(18)
+#define AU6601_MS_INT_TPC_TIMEOUT		BIT(16)
+#define AU6601_MS_INT_ERROR			BIT(15)
+#define AU6601_MS_INT_CARD_INSERT		BIT(7)
+#define AU6601_MS_INT_CARD_REMOVE		BIT(6)
+#define AU6601_MS_INT_BUF_READ_RDY		BIT(5)
+#define AU6601_MS_INT_BUF_WRITE_RDY		BIT(4)
+#define AU6601_MS_INT_DMA_END			BIT(3)
+#define AU6601_MS_INT_TPC_END			BIT(1)
 
 #define AU6601_MS_INT_DATA_MASK			0x00000038
-
-#define AU6601_MS_INT_TPC_TIMEOUT		0x00010000
-#define AU6601_MS_INT_CED_ERROR			0x00040000
-#define AU6601_MS_INT_INT_RESP_ERROR		0x00080000
-#define AU6601_MS_INT_INT_TIMEOUT		0x00100000
-#define AU6601_MS_INT_DATA_CRC_ERROR		0x00200000
-
-#define AU6601_MS_INT_OVER_CURRENT_ERROR	0x00800000
-
 #define AU6601_MS_INT_TPC_MASK			0x003d8002
 #define AU6601_MS_INT_TPC_ERROR			0x003d0000
 
@@ -471,11 +468,6 @@ static inline void au6601_unmask_ms_irqs(struct au6601_host *host)
 	au6601_write32(0x3d00fa, host->iobase + AU6601_MS_INT_ENABLE);
 }
 
-static void au6601_clear_set_reg86(struct au6601_host *host, u32 clear, u32 set)
-{
-	au6601_rmw(host->iobase + AU6601_CLK_DELAY, clear, set);
-}
-
 /*
  * check if one of data line is pulled down
  */
@@ -483,22 +475,18 @@ static inline int au6601_card_busy(struct au6601_host *host)
 {
 	u8 status;
 
-	status = (au6601_read8(host->iobase + AU6601_DATA_PIN_STATE) &
-		AU6601_BUS_STAT_DAT_MASK);
-	/* If all data lines are up, then card is not busy */
-	if (status == (AU6601_BUS_STAT_DAT0 | AU6601_BUS_STAT_DAT1 |
-		       AU6601_BUS_STAT_DAT2 | AU6601_BUS_STAT_DAT3))
-		return 0;
+	/* Check whether DAT[0] is 0 */
+	status = au6601_read8(host->iobase + AU6601_DATA_PIN_STATE);
 
-	return 1;
+	return !(status & AU6601_BUS_STAT_DAT0);
 }
 
-/* val = 0x1 abort command; 0x8 abort data? */
 static void au6601_reset(struct au6601_host *host, u8 val)
 {
 	int i;
 
-	au6601_write8(val | AU6601_BUF_CTRL_RESET, host->iobase + AU6601_REG_SW_RESET);
+	au6601_write8(val | AU6601_BUF_CTRL_RESET,
+		      host->iobase + AU6601_REG_SW_RESET);
 	for (i = 0; i < 100; i++) {
 		if (!(au6601_read8(host->iobase + AU6601_REG_SW_RESET) & val))
 			return;
@@ -763,8 +751,7 @@ static void au6601_finish_data(struct au6601_host *host)
 		 * upon error conditions.
 		 */
 		if (data->error) {
-			au6601_reset(host, AU6601_RESET_CMD);
-			au6601_reset(host, AU6601_RESET_DATA);
+			au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 		}
 		au6601_send_cmd(host, data->stop);
 	} else
@@ -1247,13 +1234,12 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	dev_dbg(host->dev, "set ios. bus width: %x, power mode: %x\n",
 		ios->bus_width, ios->power_mode);
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
-		au6601_write8(0x0,
-			 host->iobase + AU6601_REG_BUS_CTRL);
-		au6601_clear_set_reg86(host, 0xc0, 0);
+		au6601_write8(0x0, host->iobase + AU6601_REG_BUS_CTRL);
+		au6601_rmw(host->iobase + AU6601_CLK_DELAY, 0xc0, 0);
 	} else if (ios->bus_width == MMC_BUS_WIDTH_4) {
 		au6601_write8(AU6601_BUS_WIDTH_4BIT,
-			 host->iobase + AU6601_REG_BUS_CTRL);
-		au6601_clear_set_reg86(host, 0, 0xc0);
+			      host->iobase + AU6601_REG_BUS_CTRL);
+		au6601_rmw(host->iobase + AU6601_CLK_DELAY, 0, 0xc0);
 	} else
 		dev_err(host->dev, "Unknown BUS mode\n");
 
@@ -1338,8 +1324,7 @@ static void au6601_request_complete(struct au6601_host *host)
 		 (mrq->data && (mrq->data->error ||
 		  (mrq->data->stop && mrq->data->stop->error)))) {
 
-		au6601_reset(host, AU6601_RESET_CMD);
-		au6601_reset(host, AU6601_RESET_DATA);
+		au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 	}
 
 	host->mrq = NULL;
@@ -1409,8 +1394,7 @@ static void au6601_hw_init(struct au6601_host *host)
 
 	au6601_write8(0, host->iobase + AU6601_INTERFACE_MODE_CTRL);
 
-	au6601_reset(host, AU6601_RESET_CMD);
-	au6601_reset(host, AU6601_RESET_DATA);
+	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 
 	au6601_write8(AU6601_SD_CARD_ACTIVE, host->iobase + AU6601_ACTIVE_CTRL);
 
@@ -1551,8 +1535,7 @@ error_release_regions:
 static void au6601_hw_uninit(struct au6601_host *host)
 {
 
-	au6601_reset(host, AU6601_RESET_CMD);
-	au6601_reset(host, AU6601_RESET_DATA);
+	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 
 	au6601_write8(0x0, host->iobase + AU6601_DETECT_STATUS);
 	au6601_mask_sd_irqs(host);
