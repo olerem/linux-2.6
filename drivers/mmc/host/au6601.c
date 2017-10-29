@@ -831,6 +831,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 	host->cmd = cmd;
 	au6601_prepare_data(host, cmd);
 
+	/* for some reasons, au6621 need AU6601_DATA_WRITE, to send command */
 	au6601_write8(AU6601_DATA_WRITE, host->iobase + AU6601_DATA_XFER_CTRL);
 	dev_dbg(host->dev, "send CMD. opcode: 0x%02x, arg; 0x%08x\n", cmd->opcode,
 		cmd->arg);
@@ -845,7 +846,8 @@ static void au6601_send_cmd(struct au6601_host *host,
 		ctrl = AU6601_CMD_6_BYTE_CRC;
 		break;
 	case MMC_RSP_R1B:
-		ctrl = AU6601_CMD_6_BYTE_CRC | AU6601_CMD_STOP_WAIT_RDY;
+//		ctrl = AU6601_CMD_6_BYTE_CRC | AU6601_CMD_STOP_WAIT_RDY;
+		ctrl = AU6601_CMD_6_BYTE_CRC;
 		break;
 	case MMC_RSP_R2:
 		ctrl = AU6601_CMD_17_BYTE_CRC;
