@@ -613,7 +613,7 @@ static void au6601_write_block(struct au6601_host *host)
 
 	blksize = host->data->blksz * host->requested_blocks;
 
-	dev_dbg(host->dev, "write block size: 0x%x, %s \n", blksize,
+	dev_dbg(host->dev, "write block size: 0x%lx, %s \n", blksize,
 		host->dma_on ? "DMA" : "PIO");
 
 	while (blksize) {
@@ -817,8 +817,8 @@ static void au6601_prepare_data(struct au6601_host *host,
 static void au6601_send_cmd(struct au6601_host *host,
 			    struct mmc_command *cmd)
 {
-	u8 ctrl; /* some mysterious flags and control */
 	unsigned long timeout;
+	u8 ctrl = 0;
 
 	cancel_delayed_work_sync(&host->timeout_work);
 
