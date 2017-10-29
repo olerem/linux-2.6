@@ -182,6 +182,9 @@
 #define AU6601_CLK_DELAY			0x86
 #define	AU6601_CLK_DATA_POSITIVE_EDGE		0x80
 #define	AU6601_CLK_CMD_POSITIVE_EDGE		0x40
+#define	AU6601_CLK_POSITIVE_EDGE_ALL \
+	AU6601_CLK_CMD_POSITIVE_EDGE | AU6601_CLK_DATA_POSITIVE_EDGE
+
 
 #define AU6601_REG_INT_STATUS			0x90
 #define AU6601_REG_INT_ENABLE			0x94
@@ -436,14 +439,14 @@ static void au6601_write32be(u32 val, void __iomem *addr)
 	iowrite32be(val, addr);
 }
 
-static inline void au6601_rmw(void __iomem *reg, u32 clear, u32 set)
+static inline void au6601_rmw8(void __iomem *reg, u8 clear, u8 set)
 {
 	u32 var;
 
-	var = au6601_read32(reg);
+	var = au6601_read8(reg);
 	var &= ~clear;
 	var |= set;
-	au6601_write32(var, reg);
+	au6601_write8(var, reg);
 }
 
 static inline void au6601_mask_sd_irqs(struct au6601_host *host)
@@ -1236,11 +1239,13 @@ static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		ios->bus_width, ios->power_mode);
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
 		au6601_write8(0x0, host->iobase + AU6601_REG_BUS_CTRL);
-		au6601_rmw(host->iobase + AU6601_CLK_DELAY, 0xc0, 0);
+		au6601_rmw8(host->iobase + AU6601_CLK_DELAY,
+			    AU6601_CLK_POSITIVE_EDGE_ALL, 0);
 	} else if (ios->bus_width == MMC_BUS_WIDTH_4) {
 		au6601_write8(AU6601_BUS_WIDTH_4BIT,
 			      host->iobase + AU6601_REG_BUS_CTRL);
-		au6601_rmw(host->iobase + AU6601_CLK_DELAY, 0, 0xc0);
+		au6601_rmw8(host->iobase + AU6601_CLK_DELAY,
+			    0, AU6601_CLK_POSITIVE_EDGE_ALL);
 	} else
 		dev_err(host->dev, "Unknown BUS mode\n");
 
@@ -1273,10 +1278,10 @@ static int au6601_signal_voltage_switch(struct mmc_host *mmc,
 
 	switch (ios->signal_voltage) {
 	case MMC_SIGNAL_VOLTAGE_330:
-		au6601_rmw(host->iobase + AU6601_OPT, AU6601_OPT_SD_18V, 0);
+		au6601_rmw8(host->iobase + AU6601_OPT, AU6601_OPT_SD_18V, 0);
 		break;
 	case MMC_SIGNAL_VOLTAGE_180:
-		au6601_rmw(host->iobase + AU6601_OPT, 0, AU6601_OPT_SD_18V);
+		au6601_rmw8(host->iobase + AU6601_OPT, 0, AU6601_OPT_SD_18V);
 		break;
 	default:
 		/* No signal voltage switch required */
@@ -1407,6 +1412,8 @@ static void au6601_hw_init(struct au6601_host *host)
 	au6601_write8(0x44, host->iobase + AU6601_PAD_DRIVE1);
 	au6601_write8(0x00, host->iobase + AU6601_PAD_DRIVE2);
 
+	/* set default phase value */
+	au6601_write8(0x20, host->iobase + AU6601_CLK_DELAY);
 	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
 	au6601_write8(cfg->dma, host->iobase + AU6601_DMA_BOUNDARY);
 	au6601_write8(0x0, host->iobase + AU6601_OPT);
