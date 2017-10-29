@@ -831,6 +831,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 	host->cmd = cmd;
 	au6601_prepare_data(host, cmd);
 
+	au6601_write8(AU6601_DATA_WRITE, host->iobase + AU6601_DATA_XFER_CTRL);
 	dev_dbg(host->dev, "send CMD. opcode: 0x%02x, arg; 0x%08x\n", cmd->opcode,
 		cmd->arg);
 	au6601_write8(cmd->opcode | 0x40, host->iobase + AU6601_REG_CMD_OPCODE);
