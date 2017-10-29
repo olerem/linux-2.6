@@ -297,7 +297,7 @@ struct au6601_host {
 
 	struct mutex cmd_mutex;
 
-	struct delayed_work timeout_work;
+//	struct delayed_work timeout_work;
 
 	struct sg_mapping_iter sg_miter;	/* SG state for PIO */
 	unsigned int blocks;		/* remaining PIO blocks */
@@ -820,7 +820,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 	unsigned long timeout;
 	u8 ctrl = 0;
 
-	cancel_delayed_work_sync(&host->timeout_work);
+//	cancel_delayed_work_sync(&host->timeout_work);
 
 	timeout = jiffies;
 	if (!cmd->data && cmd->busy_timeout > 9000)
@@ -831,8 +831,6 @@ static void au6601_send_cmd(struct au6601_host *host,
 	host->cmd = cmd;
 	au6601_prepare_data(host, cmd);
 
-	/* for some reasons, au6621 need AU6601_DATA_WRITE, to send command */
-	au6601_write8(AU6601_DATA_WRITE, host->iobase + AU6601_DATA_XFER_CTRL);
 	dev_dbg(host->dev, "send CMD. opcode: 0x%02x, arg; 0x%08x\n", cmd->opcode,
 		cmd->arg);
 	au6601_write8(cmd->opcode | 0x40, host->iobase + AU6601_REG_CMD_OPCODE);
@@ -846,8 +844,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 		ctrl = AU6601_CMD_6_BYTE_CRC;
 		break;
 	case MMC_RSP_R1B:
-//		ctrl = AU6601_CMD_6_BYTE_CRC | AU6601_CMD_STOP_WAIT_RDY;
-		ctrl = AU6601_CMD_6_BYTE_CRC;
+		ctrl = AU6601_CMD_6_BYTE_CRC | AU6601_CMD_STOP_WAIT_RDY;
 		break;
 	case MMC_RSP_R2:
 		ctrl = AU6601_CMD_17_BYTE_CRC;
@@ -865,7 +862,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 	au6601_write8(ctrl | AU6601_CMD_START_XFER,
 		 host->iobase + AU6601_CMD_XFER_CTRL);
 
-	schedule_delayed_work(&host->timeout_work, timeout);
+//	schedule_delayed_work(&host->timeout_work, timeout);
 }
 
 /*****************************************************************************\
@@ -1321,7 +1318,7 @@ static void au6601_request_complete(struct au6601_host *host)
 	if (!host->mrq)
 		return;
 
-	cancel_delayed_work_sync(&host->timeout_work);
+//	cancel_delayed_work_sync(&host->timeout_work);
 
 	mrq = host->mrq;
 
@@ -1345,6 +1342,7 @@ static void au6601_request_complete(struct au6601_host *host)
 	mmc_request_done(host->mmc, mrq);
 }
 
+#if 0
 static void au6601_timeout_timer(struct work_struct *work)
 {
 	struct delayed_work *d = to_delayed_work(work);
@@ -1372,8 +1370,7 @@ static void au6601_timeout_timer(struct work_struct *work)
 	mmiowb();
 	mutex_unlock(&host->cmd_mutex);
 }
-
-
+#endif
 
 static void au6601_init_mmc(struct au6601_host *host)
 {
@@ -1530,7 +1527,7 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	/*
 	 * Init tasklets.
 	 */
-	INIT_DELAYED_WORK(&host->timeout_work, au6601_timeout_timer);
+	//INIT_DELAYED_WORK(&host->timeout_work, au6601_timeout_timer);
 
 	au6601_init_mmc(host);
 	au6601_hw_init(host);
@@ -1567,7 +1564,7 @@ static void au6601_pci_remove(struct pci_dev *pdev)
 
 	mutex_lock(&host->cmd_mutex);
 
-	cancel_delayed_work_sync(&host->timeout_work);
+//	cancel_delayed_work_sync(&host->timeout_work);
 
 	au6601_hw_uninit(host);
 	mutex_unlock(&host->cmd_mutex);
