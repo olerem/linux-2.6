@@ -1518,7 +1518,7 @@ static void au6601_request_complete(struct au6601_host *host)
 	 * be run again afterwards but without any active request.
 	 */
 	if (!host->mrq) {
-		dev_dbg(host->dev, "nothing to complete\n", __func__, __LINE__);
+		dev_dbg(host->dev, "nothing to complete\n");
 		return;
 	}
 
@@ -1543,7 +1543,7 @@ static void au6601_request_complete(struct au6601_host *host)
 	host->dma_on = 0;
 	host->trigger_dma_dac = 0;
 
-	dev_dbg(host->dev, "request complete\n", __func__, __LINE__);
+	dev_dbg(host->dev, "request complete\n");
 	mmc_request_done(host->mmc, mrq);
 }
 
