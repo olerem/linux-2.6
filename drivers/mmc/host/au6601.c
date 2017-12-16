@@ -944,7 +944,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 		if (data->flags & MMC_DATA_WRITE) {
 			/* prepare first write buffer */
 			/* Don't trigger data transfer now.
-			 * DMA may start it too eraly */
+			 * DMA may start it too early */
 			host->trigger_dma_dac = 1;
 			return;
 		}
@@ -961,11 +961,11 @@ static void au6601_send_cmd(struct au6601_host *host,
 
 	cancel_delayed_work_sync(&host->timeout_work);
 
-	timeout = jiffies;
+	/* TODO: Do we support busy timeout? */
 	if (!cmd->data && cmd->busy_timeout > 9000)
-		timeout += DIV_ROUND_UP(cmd->busy_timeout, 1000) * HZ + HZ;
+		timeout = DIV_ROUND_UP(cmd->busy_timeout, 1000) * HZ + HZ;
 	else
-		timeout += 10 * HZ;
+		timeout = 10 * HZ;
 
 	host->cmd = cmd;
 	au6601_prepare_data(host, cmd);
@@ -997,11 +997,11 @@ static void au6601_send_cmd(struct au6601_host *host,
 		break;
 	}
 
-	dev_dbg(host->dev, "xfer ctrl: 0x%02x; \n", ctrl);
+	dev_dbg(host->dev, "xfer ctrl: 0x%02x; timeout: %lu\n", ctrl, timeout);
 	au6601_write8(ctrl | AU6601_CMD_START_XFER,
 		 host->iobase + AU6601_CMD_XFER_CTRL);
 
-	schedule_delayed_work(&host->timeout_work, timeout);
+	schedule_delayed_work(&host->timeout_work, msecs_to_jiffies(timeout));
 }
 
 /*****************************************************************************\
@@ -1012,6 +1012,8 @@ static void au6601_send_cmd(struct au6601_host *host,
 
 static void au6601_cmd_irq(struct au6601_host *host, u32 intmask)
 {
+	dev_dbg(host->dev, "CMD IRQ %x\n", intmask);
+
 	if (!host->cmd) {
 		dev_err(host->dev,
 			"Got command interrupt 0x%08x even though no command operation was in progress.\n",
@@ -1053,6 +1055,8 @@ static void au6601_cmd_irq(struct au6601_host *host, u32 intmask)
 
 static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 {
+	dev_dbg(host->dev, "DATA IRQ %x\n", intmask);
+
 	if (!host->data) {
 		/* FIXME: Ist is same for AU6601
 		 * The "data complete" interrupt is also used to
@@ -1090,7 +1094,7 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 		if (intmask & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY))
 			au6601_transfer_data(host);
 
-		if (intmask & AU6601_INT_DATA_END) {
+		if (intmask & AU6601_INT_DATA_END || !host->blocks) {
 			if (host->cmd) {
 				/*
 				 * Data managed to finish before the
@@ -1115,6 +1119,29 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 	}
 }
 
+static void au6601_cd_irq(struct au6601_host *host, u32 intmask)
+{
+	dev_dbg(host->dev, "card %s\n",
+		intmask & AU6601_INT_CARD_REMOVE ? "removed" : "inserted");
+
+	if (host->mrq) {
+		dev_dbg(host->dev,
+			"cancel all pending tasks.\n");
+
+		if (host->data)
+			host->data->error = -ENOMEDIUM;
+
+		if (host->cmd)
+			host->cmd->error = -ENOMEDIUM;
+		else
+			host->mrq->cmd->error = -ENOMEDIUM;
+
+		au6601_request_complete(host);
+	}
+
+	mmc_detect_change(host->mmc, msecs_to_jiffies(1));
+}
+
 static irqreturn_t au6601_irq_thread(int irq, void *d)
 {
 	struct au6601_host *host = d;
@@ -1128,7 +1155,7 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 	/* some thing bad */
 	if (unlikely(!intmask || AU6601_INT_ALL_MASK == intmask)) {
 
-		dev_warn(host->dev, "0xFFFF7FFF got unhandled IRQ with %x\n",
+		dev_warn(host->dev, "got unhandled IRQ with %x\n",
 			 intmask);
 		ret = IRQ_NONE;
 		goto exit;
@@ -1137,37 +1164,29 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 	dev_dbg(host->dev, "IRQ %x\n", intmask);
 
 	if (intmask & AU6601_INT_CMD_MASK) {
-		dev_dbg(host->dev, "CMD IRQ %x\n", intmask);
-
 		au6601_cmd_irq(host, intmask & AU6601_INT_CMD_MASK);
 		intmask &= ~AU6601_INT_CMD_MASK;
 	}
 
 	if (intmask & AU6601_INT_DATA_MASK) {
-		dev_dbg(host->dev, "DATA IRQ %x\n", intmask);
 		au6601_data_irq(host, intmask & AU6601_INT_DATA_MASK);
 		intmask &= ~AU6601_INT_DATA_MASK;
 	}
 
 	if (intmask & (AU6601_INT_CARD_INSERT | AU6601_INT_CARD_REMOVE)) {
-		/* this check can be remove */
-		if (intmask & AU6601_INT_CARD_REMOVE)
-			dev_dbg(host->dev, "card removed\n");
-		else
-			dev_dbg(host->dev, "card inserted\n");
-
+		au6601_cd_irq(host, intmask);
 		intmask &= ~(AU6601_INT_CARD_INSERT | AU6601_INT_CARD_REMOVE);
-		mmc_detect_change(host->mmc, msecs_to_jiffies(1));
 	}
 
 	if (intmask & AU6601_INT_OVER_CURRENT_ERR) {
+		/* TODO: provide over current handler */
 		dev_warn(host->dev,
 			 "warning: over current detected!\n");
 		intmask &= ~AU6601_INT_OVER_CURRENT_ERR;
 	}
 
 	if (intmask & 0xFFFF7FFF) {
-		dev_warn(host->dev, "0xFFFF7FFF got unhandled IRQ with %x\n",
+		dev_warn(host->dev, "0xFFFF7FFF got not handled IRQ with %x\n",
 			 intmask);
 	}
 
@@ -1210,18 +1229,18 @@ static int au6601_get_cd(struct mmc_host *mmc)
 
 static void au6601_sdc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 {
-	struct au6601_host *host;
+	struct au6601_host *host = mmc_priv(mmc);
 
-	host = mmc_priv(mmc);
 	mutex_lock(&host->cmd_mutex);
 
-	dev_dbg(host->dev, "%s:%i\n", __func__, __LINE__);
+	dev_dbg(host->dev, "got request\n");
 	host->mrq = mrq;
 
 	/* check if card is present then send command and data */
 	if (au6601_get_cd(mmc))
 		au6601_send_cmd(host, mrq->cmd);
 	else {
+		dev_dbg(host->dev, "card is not present\n");
 		mrq->cmd->error = -ENOMEDIUM;
 		au6601_request_complete(host);
 	}
@@ -1394,9 +1413,8 @@ static void au6601_set_bus_width(struct mmc_host *mmc, struct mmc_ios *ios)
 
 static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
-	struct au6601_host *host;
+	struct au6601_host *host = mmc_priv(mmc);
 
-	host = mmc_priv(mmc);
 	mutex_lock(&host->cmd_mutex);
 
 	dev_dbg(host->dev, "set ios. bus width: %x, power mode: %x\n",
@@ -1499,8 +1517,10 @@ static void au6601_request_complete(struct au6601_host *host)
 	 * If this tasklet gets rescheduled while running, it will
 	 * be run again afterwards but without any active request.
 	 */
-	if (!host->mrq)
+	if (!host->mrq) {
+		dev_dbg(host->dev, "nothing to complete\n", __func__, __LINE__);
 		return;
+	}
 
 	cancel_delayed_work_sync(&host->timeout_work);
 
@@ -1523,6 +1543,7 @@ static void au6601_request_complete(struct au6601_host *host)
 	host->dma_on = 0;
 	host->trigger_dma_dac = 0;
 
+	dev_dbg(host->dev, "request complete\n", __func__, __LINE__);
 	mmc_request_done(host->mmc, mrq);
 }
 
@@ -1533,7 +1554,7 @@ static void au6601_timeout_timer(struct work_struct *work)
 						timeout_work);
 	mutex_lock(&host->cmd_mutex);
 
-	dev_dbg(host->dev, "got timeout!\n");
+	dev_dbg(host->dev, "triggered timeout\n");
 	if (host->mrq) {
 		dev_err(host->dev,
 			"Timeout waiting for hardware interrupt.\n");
