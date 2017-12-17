@@ -366,9 +366,8 @@ static const struct pci_device_id pci_ids[] = {
 MODULE_DEVICE_TABLE(pci, pci_ids);
 
 static void au6601_reg_decode(int write, int size, u32 val,
-			      volatile void __iomem *addr)
+			      unsigned int addr_short)
 {
-	unsigned int addr_short = (unsigned int)addr & 0xff;
 	const char *reg;
 
 	switch (addr_short)
@@ -413,62 +412,70 @@ static void au6601_reg_decode(int write, int size, u32 val,
 		 size, addr_short, val, reg);
 }
 
-static void au6601_write8(u8 val, volatile void __iomem *addr)
+static void au6601_write8(struct au6601_host *host, u8 val,
+			  unsigned int addr)
 {
 	au6601_reg_decode(1, 1, val, addr);
-	writeb(val, addr);
+	writeb(val, host->iobase + addr);
 }
 
-static void au6601_write16(u16 val, volatile void __iomem *addr)
+static void au6601_write16(struct au6601_host *host, u16 val,
+			   unsigned int addr)
 {
 	au6601_reg_decode(1, 2, val, addr);
-	writew(val, addr);
+	writew(val, host->iobase + addr);
 }
 
-static void au6601_write32(u32 val, volatile void __iomem *addr)
+static void au6601_write32(struct au6601_host *host, u32 val,
+			   unsigned int addr)
 {
 	au6601_reg_decode(1, 4, val, addr);
-	writel(val, addr);
+	writel(val, host->iobase + addr);
 }
 
-static u8 au6601_read8(volatile void __iomem *addr)
+static u8 au6601_read8(struct au6601_host *host,
+		       unsigned int addr)
 {
 	u8 val;
-	val = readb(addr);
+	val = readb(host->iobase + addr);
 	au6601_reg_decode(0, 1, val, addr);
 	return val;
 }
 
-static u32 au6601_read32(volatile void __iomem *addr)
+static u32 au6601_read32(struct au6601_host *host,
+			 unsigned int addr)
 {
 	u32 val;
-	val = readl(addr);
+	val = readl(host->iobase + addr);
 	au6601_reg_decode(0, 4, val, addr);
 	return val;
 }
 
-static u32 au6601_read32be(void __iomem *addr)
+static u32 au6601_read32be(struct au6601_host *host,
+			   unsigned int addr)
 {
 	u32 val;
-	val = ioread32be(addr);
+	val = ioread32be(host->iobase + addr);
 	au6601_reg_decode(0, 4, val, addr);
 	return val;
 }
 
-static void au6601_write32be(u32 val, void __iomem *addr)
+static void au6601_write32be(struct au6601_host *host,
+			     u32 val, unsigned int addr)
 {
 	au6601_reg_decode(1, 4, val, addr);
-	iowrite32be(val, addr);
+	iowrite32be(val, host->iobase + addr);
 }
 
-static inline void au6601_rmw8(void __iomem *reg, u8 clear, u8 set)
+static inline void au6601_rmw8(struct au6601_host *host, unsigned int addr,
+			       u8 clear, u8 set)
 {
 	u32 var;
 
-	var = au6601_read8(reg);
+	var = au6601_read8(host, addr);
 	var &= ~clear;
 	var |= set;
-	au6601_write8(var, reg);
+	au6601_write8(host, var, addr);
 }
 
 /* TODO: find if we have some mainline generic way to do it */
@@ -609,35 +616,35 @@ static void pci_aspm_ctrl(struct au6601_host *host, u8 aspm_enable)
 
 static inline void au6601_mask_sd_irqs(struct au6601_host *host)
 {
-	au6601_write32(0, host->iobase + AU6601_REG_INT_ENABLE);
+	au6601_write32(host, 0, AU6601_REG_INT_ENABLE);
 }
 
 static inline void au6601_unmask_sd_irqs(struct au6601_host *host)
 {
-	au6601_write32(AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK |
+	au6601_write32(host, AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK |
 		  AU6601_INT_CARD_INSERT | AU6601_INT_CARD_REMOVE |
 		  AU6601_INT_OVER_CURRENT_ERR,
-		  host->iobase + AU6601_REG_INT_ENABLE);
+		  AU6601_REG_INT_ENABLE);
 }
 
 static inline void au6601_mask_ms_irqs(struct au6601_host *host)
 {
-	au6601_write32(0, host->iobase + AU6601_MS_INT_ENABLE);
+	au6601_write32(host, 0, AU6601_MS_INT_ENABLE);
 }
 
 static inline void au6601_unmask_ms_irqs(struct au6601_host *host)
 {
-	au6601_write32(0x3d00fa, host->iobase + AU6601_MS_INT_ENABLE);
+	au6601_write32(host, 0x3d00fa, AU6601_MS_INT_ENABLE);
 }
 
 static void au6601_reset(struct au6601_host *host, u8 val)
 {
 	int i;
 
-	au6601_write8(val | AU6601_BUF_CTRL_RESET,
-		      host->iobase + AU6601_REG_SW_RESET);
+	au6601_write8(host, val | AU6601_BUF_CTRL_RESET,
+		      AU6601_REG_SW_RESET);
 	for (i = 0; i < 100; i++) {
-		if (!(au6601_read8(host->iobase + AU6601_REG_SW_RESET) & val))
+		if (!(au6601_read8(host, AU6601_REG_SW_RESET) & val))
 			return;
 		udelay(50);
 	}
@@ -649,16 +656,16 @@ static void au6601_set_power(struct au6601_host *host, u8 card_type)
 	/* if card_type is set, assume we wont to power on */
 	if (card_type) {
 		/* TODO: why do we use card type here? */
-		au6601_write8(card_type, host->iobase + AU6601_POWER_CONTROL);
+		au6601_write8(host, card_type, AU6601_POWER_CONTROL);
 		/* TODO: why do we need this msleep? */
 		mdelay(40);
-		au6601_write8(card_type, host->iobase + AU6601_OUTPUT_ENABLE);
+		au6601_write8(host, card_type, AU6601_OUTPUT_ENABLE);
 		/* seems like au6621 needs this weird workaround */
-		au6601_write8(AU6601_DATA_WRITE,
-			      host->iobase + AU6601_DATA_XFER_CTRL);
+		au6601_write8(host, AU6601_DATA_WRITE,
+			      AU6601_DATA_XFER_CTRL);
 	} else {
-		au6601_write8(card_type, host->iobase + AU6601_OUTPUT_ENABLE);
-		au6601_write8(card_type, host->iobase + AU6601_POWER_CONTROL);
+		au6601_write8(host, card_type, AU6601_OUTPUT_ENABLE);
+		au6601_write8(host, card_type, AU6601_POWER_CONTROL);
 	}
 	mdelay(100);
 }
@@ -673,7 +680,7 @@ static void au6601_trigger_data_transfer(struct au6601_host *host,
 		ctrl |= AU6601_DATA_WRITE;
 
 	if (dma) {
-		au6601_write32(host->phys_base, host->iobase + AU6601_REG_SDMA_ADDR);
+		au6601_write32(host, host->phys_base, AU6601_REG_SDMA_ADDR);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
 
@@ -688,9 +695,9 @@ static void au6601_trigger_data_transfer(struct au6601_host *host,
 	}
 
 done:
-	au6601_write32(data->blksz * host->requested_blocks,
-		host->iobase + AU6601_REG_BLOCK_SIZE);
-	au6601_write8(ctrl | AU6601_DATA_START_XFER, host->iobase + AU6601_DATA_XFER_CTRL);
+	au6601_write32(host, data->blksz * host->requested_blocks,
+		AU6601_REG_BLOCK_SIZE);
+	au6601_write8(host, ctrl | AU6601_DATA_START_XFER, AU6601_DATA_XFER_CTRL);
 }
 
 /*****************************************************************************\
@@ -729,8 +736,7 @@ static void au6601_read_block(struct au6601_host *host)
 				u32 scratch;
 
 				if (chunk == 0) {
-					scratch = au6601_read32(host->iobase +
-							AU6601_REG_BUFFER);
+					scratch = au6601_read32(host, AU6601_REG_BUFFER);
 					chunk = 4;
 				}
 
@@ -784,8 +790,7 @@ static void au6601_write_block(struct au6601_host *host)
 
 				if ((chunk == 4) || ((len == 0)
 						&& (blksize == 0))) {
-					au6601_write32(scratch, host->iobase +
-						AU6601_REG_BUFFER);
+					au6601_write32(host, scratch, AU6601_REG_BUFFER);
 					chunk = 0;
 					scratch = 0;
 				}
@@ -826,15 +831,15 @@ static void au6601_finish_command(struct au6601_host *host)
 	dev_dbg(host->dev, "Finish CMD\n");
 
 	if (host->cmd->flags & MMC_RSP_PRESENT) {
-		cmd->resp[0] = au6601_read32be(host->iobase + AU6601_REG_CMD_RSP0);
+		cmd->resp[0] = au6601_read32be(host, AU6601_REG_CMD_RSP0);
 		dev_dbg(host->dev, "RSP0: 0x%02x\n", cmd->resp[0]);
 		if (host->cmd->flags & MMC_RSP_136) {
 			cmd->resp[1] =
-				au6601_read32be(host->iobase + AU6601_REG_CMD_RSP1);
+				au6601_read32be(host, AU6601_REG_CMD_RSP1);
 			cmd->resp[2] =
-				au6601_read32be(host->iobase + AU6601_REG_CMD_RSP2);
+				au6601_read32be(host, AU6601_REG_CMD_RSP2);
 			cmd->resp[3] =
-				au6601_read32be(host->iobase + AU6601_REG_CMD_RSP3);
+				au6601_read32be(host, AU6601_REG_CMD_RSP3);
 			dev_dbg(host->dev, "RSP1,2,3: 0x%02x 0x%02x 0x%02x\n",
 				cmd->resp[1], cmd->resp[2], cmd->resp[3]);
 		}
@@ -976,8 +981,8 @@ static void au6601_send_cmd(struct au6601_host *host,
 
 	dev_dbg(host->dev, "send CMD. opcode: 0x%02x, arg; 0x%08x\n", cmd->opcode,
 		cmd->arg);
-	au6601_write8(cmd->opcode | 0x40, host->iobase + AU6601_REG_CMD_OPCODE);
-	au6601_write32be(cmd->arg, host->iobase + AU6601_REG_CMD_ARG);
+	au6601_write8(host, cmd->opcode | 0x40, AU6601_REG_CMD_OPCODE);
+	au6601_write32be(host, cmd->arg, AU6601_REG_CMD_ARG);
 
 	switch (mmc_resp_type(cmd)) {
 	case MMC_RSP_NONE:
@@ -1002,8 +1007,8 @@ static void au6601_send_cmd(struct au6601_host *host,
 	}
 
 	dev_dbg(host->dev, "xfer ctrl: 0x%02x; timeout: %lu\n", ctrl, timeout);
-	au6601_write8(ctrl | AU6601_CMD_START_XFER,
-		 host->iobase + AU6601_CMD_XFER_CTRL);
+	au6601_write8(host, ctrl | AU6601_CMD_START_XFER,
+		 AU6601_CMD_XFER_CTRL);
 
 	schedule_delayed_work(&host->timeout_work, msecs_to_jiffies(timeout));
 }
@@ -1207,12 +1212,12 @@ static irqreturn_t au6601_irq(int irq, void *d)
 	struct au6601_host *host = d;
 	u32 status;
 
-	status = au6601_read32(host->iobase + AU6601_REG_INT_STATUS);
+	status = au6601_read32(host, AU6601_REG_INT_STATUS);
 
 	/* some thing bad */
 	if (status) {
 		host->irq_status_sd = status;
-		au6601_write32(status, host->iobase + AU6601_REG_INT_STATUS);
+		au6601_write32(host, status, AU6601_REG_INT_STATUS);
 		au6601_mask_sd_irqs(host);
 		return IRQ_WAKE_THREAD;
 	}
@@ -1268,9 +1273,9 @@ done:
 	dev_dbg(host->dev, "set freq %d, use freq %d, %d, %x\n",
 		clock, clock_out, div, mod);
 
-	au6601_write16((div - 1) << AU6601_PLL_DIV_S
+	au6601_write16(host, (div - 1) << AU6601_PLL_DIV_S
 		  | mod << AU6601_PLL_MOD_S | ctrl,
-		  host->iobase + AU6601_REG_PLL_CTRL);
+		  AU6601_REG_PLL_CTRL);
 }
 
 #else
@@ -1280,9 +1285,9 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 	u8 clk_div;
 
 	if (clock == 0) {
-		//writew(0, host->iobase + AU6601_CLK_SELECT);
-		au6601_write16(0, host->iobase + AU6601_CLK_SELECT);
-		au6601_write8(0, host->iobase + AU6601_DATA_XFER_CTRL);
+		//writew(0, AU6601_CLK_SELECT);
+		au6601_write16(host, 0, AU6601_CLK_SELECT);
+		au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 		return;
 	}
 
@@ -1362,7 +1367,7 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 	dev_dbg(host->dev, "set freq %d, use div %d, mod %x\n",
 			clock, clk_div, clk_src);
 
-	au6601_write16(clk_src, host->iobase + AU6601_CLK_SELECT);
+	au6601_write16(host, clk_src, AU6601_CLK_SELECT);
 }
 #endif
 
@@ -1371,13 +1376,13 @@ static void au6601_set_bus_width(struct mmc_host *mmc, struct mmc_ios *ios)
 	struct au6601_host *host = mmc_priv(mmc);
 
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
-		au6601_write8(0x0, host->iobase + AU6601_REG_BUS_CTRL);
-		au6601_rmw8(host->iobase + AU6601_CLK_DELAY,
+		au6601_write8(host, 0x0, AU6601_REG_BUS_CTRL);
+		au6601_rmw8(host, AU6601_CLK_DELAY,
 			    AU6601_CLK_POSITIVE_EDGE_ALL, 0);
 	} else if (ios->bus_width == MMC_BUS_WIDTH_4) {
-		au6601_write8(AU6601_BUS_WIDTH_4BIT,
-			      host->iobase + AU6601_REG_BUS_CTRL);
-		au6601_rmw8(host->iobase + AU6601_CLK_DELAY,
+		au6601_write8(host, AU6601_BUS_WIDTH_4BIT,
+			      AU6601_REG_BUS_CTRL);
+		au6601_rmw8(host, AU6601_CLK_DELAY,
 			    0, AU6601_CLK_POSITIVE_EDGE_ALL);
 	} else
 		dev_err(host->dev, "Unknown BUS mode\n");
@@ -1391,7 +1396,7 @@ static int au6601_card_busy(struct mmc_host *mmc)
 
 	dev_dbg(host->dev, "%s:%i\n", __func__, __LINE__);
 	/* Check whether dat[0:3] low */
-	status = au6601_read8(host->iobase + AU6601_DATA_PIN_STATE);
+	status = au6601_read8(host, AU6601_DATA_PIN_STATE);
 
 	return !(status & AU6601_BUS_STAT_DAT_MASK);
 }
@@ -1401,7 +1406,7 @@ static int au6601_get_cd(struct mmc_host *mmc)
 	struct au6601_host *host = mmc_priv(mmc);
 	u8 detect;
 
-	detect = au6601_read8(host->iobase + AU6601_DETECT_STATUS)
+	detect = au6601_read8(host, AU6601_DETECT_STATUS)
 		& AU6601_DETECT_STATUS_M;
 	/* check if card is present then send command and data */
 	return (AU6601_SD_DETECTED == detect);
@@ -1413,7 +1418,7 @@ static int au6601_get_ro(struct mmc_host *mmc)
 	u8 status;
 
 	/* get write protect pin status */
-	status = au6601_read8(host->iobase + AU6601_INTERFACE_MODE_CTRL);
+	status = au6601_read8(host, AU6601_INTERFACE_MODE_CTRL);
 	dev_dbg(host->dev, "get write protect status %x\n", status);
 
 	return !!(status & AU6601_SD_CARD_WP);
@@ -1453,22 +1458,22 @@ static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	case MMC_POWER_OFF:
 		au6601_set_clock(host, ios->clock);
 		/* set all pins to input */
-		au6601_write8(0, host->iobase + AU6601_OUTPUT_ENABLE);
+		au6601_write8(host, 0, AU6601_OUTPUT_ENABLE);
 		/* turn of Vcc */
-		au6601_write8(0, host->iobase + AU6601_POWER_CONTROL);
+		au6601_write8(host, 0, AU6601_POWER_CONTROL);
 		pci_aspm_ctrl(host, 1);
 		break;
 	case MMC_POWER_UP:
 		pci_aspm_ctrl(host, 0);
-		au6601_write8(AU6601_SD_CARD,
-			      host->iobase + AU6601_ACTIVE_CTRL);
-		au6601_write8(0x0, host->iobase + AU6601_OPT);
-		au6601_write8(0x20, host->iobase + AU6601_CLK_DELAY);
-		au6601_write8(0x0, host->iobase + AU6601_REG_BUS_CTRL);
+		au6601_write8(host, AU6601_SD_CARD,
+			      AU6601_ACTIVE_CTRL);
+		au6601_write8(host, 0x0, AU6601_OPT);
+		au6601_write8(host, 0x20, AU6601_CLK_DELAY);
+		au6601_write8(host, 0x0, AU6601_REG_BUS_CTRL);
 		au6601_set_clock(host, ios->clock);
 		/* set power on Vcc */
-		au6601_write8(AU6601_SD_CARD,
-			      host->iobase + AU6601_POWER_CONTROL);
+		au6601_write8(host, AU6601_SD_CARD,
+			      AU6601_POWER_CONTROL);
 		break;
 	case MMC_POWER_ON:
 		if (ios->power_mode == host->cur_power_mode) {
@@ -1478,12 +1483,12 @@ static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		}
 		au6601_set_clock(host, ios->clock);
 
-		au6601_write8(AU6601_SD_CARD,
-			      host->iobase + AU6601_OUTPUT_ENABLE);
+		au6601_write8(host, AU6601_SD_CARD,
+			      AU6601_OUTPUT_ENABLE);
 		/* The clk will not work on au6621. We need read some thing out */
-		au6601_write8(AU6601_DATA_WRITE,
-			      host->iobase + AU6601_DATA_XFER_CTRL);
-		au6601_write8(0x7d, host->iobase + AU6601_TIME_OUT_CTRL);
+		au6601_write8(host, AU6601_DATA_WRITE,
+			      AU6601_DATA_XFER_CTRL);
+		au6601_write8(host, 0x7d, AU6601_TIME_OUT_CTRL);
 		break;
 	default:
 		dev_err(host->dev, "Unknown power parametr\n");
@@ -1503,10 +1508,10 @@ static int au6601_signal_voltage_switch(struct mmc_host *mmc,
 	dev_dbg(host->dev, "%s:%i\n", __func__, __LINE__);
 	switch (ios->signal_voltage) {
 	case MMC_SIGNAL_VOLTAGE_330:
-		au6601_rmw8(host->iobase + AU6601_OPT, AU6601_OPT_SD_18V, 0);
+		au6601_rmw8(host, AU6601_OPT, AU6601_OPT_SD_18V, 0);
 		break;
 	case MMC_SIGNAL_VOLTAGE_180:
-		au6601_rmw8(host->iobase + AU6601_OPT, 0, AU6601_OPT_SD_18V);
+		au6601_rmw8(host, AU6601_OPT, 0, AU6601_OPT_SD_18V);
 		break;
 	default:
 		/* No signal voltage switch required */
@@ -1623,30 +1628,30 @@ static void au6601_hw_init(struct au6601_host *host)
 
 	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 
-	au6601_write8(0, host->iobase + AU6601_DMA_BOUNDARY);
-	au6601_write8(AU6601_SD_CARD, host->iobase + AU6601_ACTIVE_CTRL);
+	au6601_write8(host, 0, AU6601_DMA_BOUNDARY);
+	au6601_write8(host, AU6601_SD_CARD, AU6601_ACTIVE_CTRL);
 
-	au6601_write8(AU6601_BUS_WIDTH_1BIT, host->iobase + AU6601_REG_BUS_CTRL);
-	//au6601_write8(0, host->iobase + AU6601_DATA_XFER_CTRL);
+	au6601_write8(host, AU6601_BUS_WIDTH_1BIT, AU6601_REG_BUS_CTRL);
+	//au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 
 #if 0
-	au6601_write8(0x44, host->iobase + AU6601_PAD_DRIVE0);
-	au6601_write8(0x44, host->iobase + AU6601_PAD_DRIVE1);
-	au6601_write8(0x00, host->iobase + AU6601_PAD_DRIVE2);
+	au6601_write8(host, 0x44, AU6601_PAD_DRIVE0);
+	au6601_write8(host, 0x44, AU6601_PAD_DRIVE1);
+	au6601_write8(host, 0x00, AU6601_PAD_DRIVE2);
 
 	/* set default phase value */
-	au6601_write8(0x20, host->iobase + AU6601_CLK_DELAY);
+	au6601_write8(host, 0x20, AU6601_CLK_DELAY);
 #endif
 	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
-	au6601_write8(cfg->dma, host->iobase + AU6601_DMA_BOUNDARY);
-	//au6601_write8(0x0, host->iobase + AU6601_OPT);
+	au6601_write8(host, cfg->dma, AU6601_DMA_BOUNDARY);
+	//au6601_write8(host, 0x0, AU6601_OPT);
 
 	au6601_set_power(host, 0);
 	pci_aspm_ctrl(host, 1);
 
 	host->dma_on = 0;
 
-	au6601_write8(AU6601_DETECT_EN, host->iobase + AU6601_DETECT_STATUS);
+	au6601_write8(host, AU6601_DETECT_EN, AU6601_DETECT_STATUS);
 	/* now we should be safe to enable IRQs */
 	au6601_unmask_sd_irqs(host);
 	/* currently i don't know how to properly handle MS IRQ
@@ -1770,13 +1775,13 @@ static void au6601_hw_uninit(struct au6601_host *host)
 
 	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 
-	au6601_write8(0x0, host->iobase + AU6601_DETECT_STATUS);
+	au6601_write8(host, 0x0, AU6601_DETECT_STATUS);
 	au6601_mask_sd_irqs(host);
 	au6601_mask_ms_irqs(host);
 
 	au6601_set_power(host, 0);
 
-	au6601_write8(0x0, host->iobase + AU6601_OPT);
+	au6601_write8(host, 0x0, AU6601_OPT);
 	pci_aspm_ctrl(host, 1);
 }
 
