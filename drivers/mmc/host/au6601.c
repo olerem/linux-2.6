@@ -346,6 +346,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 				struct mmc_command *cmd);
 static void au6601_finish_data(struct au6601_host *host);
 static void au6601_request_complete(struct au6601_host *host);
+static int au6601_get_cd(struct mmc_host *mmc);
 
 static const struct au6601_dev_cfg au6601_cfg = {
 	.dma = 0,
@@ -1220,38 +1221,6 @@ static irqreturn_t au6601_irq(int irq, void *d)
 
 }
 
-static int au6601_get_cd(struct mmc_host *mmc)
-{
-	struct au6601_host *host = mmc_priv(mmc);
-	u8 detect;
-
-	detect = au6601_read8(host->iobase + AU6601_DETECT_STATUS)
-		& AU6601_DETECT_STATUS_M;
-	/* check if card is present then send command and data */
-	return (AU6601_SD_DETECTED == detect);
-}
-
-static void au6601_sdc_request(struct mmc_host *mmc, struct mmc_request *mrq)
-{
-	struct au6601_host *host = mmc_priv(mmc);
-
-	mutex_lock(&host->cmd_mutex);
-
-	dev_dbg(host->dev, "got request\n");
-	host->mrq = mrq;
-
-	/* check if card is present then send command and data */
-	if (au6601_get_cd(mmc))
-		au6601_send_cmd(host, mrq->cmd);
-	else {
-		dev_dbg(host->dev, "card is not present\n");
-		mrq->cmd->error = -ENOMEDIUM;
-		au6601_request_complete(host);
-	}
-
-	mutex_unlock(&host->cmd_mutex);
-}
-
 #if 0
 static unsigned int au6601_calc_div(unsigned int clock, unsigned int clock_mod,
 		 const struct au6601_pll_conf *cfg)
@@ -1415,7 +1384,63 @@ static void au6601_set_bus_width(struct mmc_host *mmc, struct mmc_ios *ios)
 
 }
 
-static void au6601_sdc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+static int au6601_card_busy(struct mmc_host *mmc)
+{
+	struct au6601_host *host = mmc_priv(mmc);
+	u8 status;
+
+	dev_dbg(host->dev, "%s:%i\n", __func__, __LINE__);
+	/* Check whether dat[0:3] low */
+	status = au6601_read8(host->iobase + AU6601_DATA_PIN_STATE);
+
+	return !(status & AU6601_BUS_STAT_DAT_MASK);
+}
+
+static int au6601_get_cd(struct mmc_host *mmc)
+{
+	struct au6601_host *host = mmc_priv(mmc);
+	u8 detect;
+
+	detect = au6601_read8(host->iobase + AU6601_DETECT_STATUS)
+		& AU6601_DETECT_STATUS_M;
+	/* check if card is present then send command and data */
+	return (AU6601_SD_DETECTED == detect);
+}
+
+static int au6601_get_ro(struct mmc_host *mmc)
+{
+	struct au6601_host *host = mmc_priv(mmc);
+	u8 status;
+
+	/* get write protect pin status */
+	status = au6601_read8(host->iobase + AU6601_INTERFACE_MODE_CTRL);
+	dev_dbg(host->dev, "get write protect status %x\n", status);
+
+	return !!(status & AU6601_SD_CARD_WP);
+}
+
+static void au6601_request(struct mmc_host *mmc, struct mmc_request *mrq)
+{
+	struct au6601_host *host = mmc_priv(mmc);
+
+	mutex_lock(&host->cmd_mutex);
+
+	dev_dbg(host->dev, "got request\n");
+	host->mrq = mrq;
+
+	/* check if card is present then send command and data */
+	if (au6601_get_cd(mmc))
+		au6601_send_cmd(host, mrq->cmd);
+	else {
+		dev_dbg(host->dev, "card is not present\n");
+		mrq->cmd->error = -ENOMEDIUM;
+		au6601_request_complete(host);
+	}
+
+	mutex_unlock(&host->cmd_mutex);
+}
+
+static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct au6601_host *host = mmc_priv(mmc);
 
@@ -1492,38 +1517,13 @@ static int au6601_signal_voltage_switch(struct mmc_host *mmc,
 	return 0;
 }
 
-static int au6601_ops_card_busy(struct mmc_host *mmc)
-{
-	struct au6601_host *host = mmc_priv(mmc);
-	u8 status;
-
-	dev_dbg(host->dev, "%s:%i\n", __func__, __LINE__);
-	/* Check whether dat[0:3] low */
-	status = au6601_read8(host->iobase + AU6601_DATA_PIN_STATE);
-
-	return !(status & AU6601_BUS_STAT_DAT_MASK);
-}
-
-static int au6601_get_ro(struct mmc_host *mmc)
-{
-	struct au6601_host *host = mmc_priv(mmc);
-	u8 status;
-
-	/* get write protect pin status */
-	status = au6601_read8(host->iobase + AU6601_INTERFACE_MODE_CTRL);
-	dev_dbg(host->dev, "get write protect status %x\n", status);
-
-	return !!(status & AU6601_SD_CARD_WP);
-}
-
 static const struct mmc_host_ops au6601_sdc_ops = {
-	.request	= au6601_sdc_request,
-	.set_ios	= au6601_sdc_set_ios,
-	.start_signal_voltage_switch = au6601_signal_voltage_switch,
-
+	.card_busy	= au6601_card_busy,
 	.get_cd		= au6601_get_cd,
 	.get_ro		= au6601_get_ro,
-	.card_busy	= au6601_ops_card_busy,
+	.request	= au6601_request,
+	.set_ios	= au6601_set_ios,
+	.start_signal_voltage_switch = au6601_signal_voltage_switch,
 };
 
 static void au6601_request_complete(struct au6601_host *host)
