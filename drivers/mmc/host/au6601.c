@@ -27,7 +27,7 @@
 #include <linux/mmc/mmc.h>
 
 #define DRVNAME					"au6601-pci"
-#define PCI_ID_ALCOR_MICRO			0x1aea
+#define PCI_ID_ALCOR_MICRO			0x1AEA
 #define PCI_ID_AU6601				0x6601
 #define PCI_ID_AU6621				0x6621
 
@@ -37,7 +37,7 @@
 #define AU6601_MIN_CLOCK			(150 * 1000)
 #define AU6601_MAX_CLOCK			MHZ_TO_HZ(208)
 #define AU6601_MAX_SEGMENTS			1
-#define AU6601_MAX_BLOCK_SIZE			0x1000
+#define AU6601_MAX_BLOCK_SIZE			4096
 #define AU6601_MAX_DMA_BLOCKS			1
 #define AU6601_DMA_LOCAL_SEGMENTS		1
 #define AU6601_MAX_BLOCK_COUNT			1
@@ -113,7 +113,8 @@
 #define AU6601_DLINK_MODE			0x80
 #define	AU6601_INTERRUPT_DELAY_TIME		0x40
 #define	AU6601_SIGNAL_REQ_CTRL			0x30
-#define	AU6601_WRITE_PROTECT			BIT(0)
+#define AU6601_MS_CARD_WP			BIT(3)
+#define AU6601_SD_CARD_WP			BIT(0)
 
 /* ???
  *  same register values are used for:
@@ -1503,12 +1504,25 @@ static int au6601_ops_card_busy(struct mmc_host *mmc)
 	return !(status & AU6601_BUS_STAT_DAT_MASK);
 }
 
+static int au6601_get_ro(struct mmc_host *mmc)
+{
+	struct au6601_host *host = mmc_priv(mmc);
+	u8 status;
+
+	/* get write protect pin status */
+	status = au6601_read8(host->iobase + AU6601_INTERFACE_MODE_CTRL);
+	dev_dbg(host->dev, "get write protect status %x\n", status);
+
+	return !!(status & AU6601_SD_CARD_WP);
+}
+
 static const struct mmc_host_ops au6601_sdc_ops = {
 	.request	= au6601_sdc_request,
 	.set_ios	= au6601_sdc_set_ios,
 	.start_signal_voltage_switch = au6601_signal_voltage_switch,
 
 	.get_cd		= au6601_get_cd,
+	.get_ro		= au6601_get_ro,
 	.card_busy	= au6601_ops_card_busy,
 };
 
