@@ -36,12 +36,11 @@
 #define AU6601_BASE_CLOCK			MHZ_TO_HZ(31)
 #define AU6601_MIN_CLOCK			(150 * 1000)
 #define AU6601_MAX_CLOCK			MHZ_TO_HZ(208)
-#define AU6601_MAX_SEGMENTS			512
-#define AU6601_MAX_BLOCK_LENGTH			512
+#define AU6601_MAX_SEGMENTS			1
+#define AU6601_MAX_BLOCK_SIZE			0x1000
 #define AU6601_MAX_DMA_BLOCKS			1
-#define AU6601_DMA_LOCAL_SEGMENTS		3
+#define AU6601_DMA_LOCAL_SEGMENTS		1
 #define AU6601_MAX_BLOCK_COUNT			1
-//#define AU6601_MAX_BLOCK_COUNT			65536
 
 /* SDMA phy address. Higer then 0x0800.0000? */
 #define AU6601_REG_SDMA_ADDR			0x00
@@ -180,14 +179,17 @@
 #define AU6601_BUS_STAT_DAT_MASK		0xf
 
 #define AU6601_OPT				0x85
-/* line level here?? really? not in AU6601_DATA_PIN_STATE? */
 #define	AU6601_OPT_CMD_LINE_LEVEL		0x80
 #define	AU6601_OPT_NCRC_16_CLK			BIT(4)
 #define	AU6601_OPT_CMD_NWT			BIT(3)
 #define	AU6601_OPT_STOP_CLK			BIT(2)
 #define	AU6601_OPT_DDR_MODE			BIT(1)
+/* TODO: according to spec, we support 1.2, 1.8 and 3.3.
+ * How to enable 1.2?
+ */
 #define	AU6601_OPT_SD_18V			BIT(0)
 
+/* TODO: how to use clock delay */
 #define AU6601_CLK_DELAY			0x86
 #define	AU6601_CLK_DATA_POSITIVE_EDGE		0x80
 #define	AU6601_CLK_CMD_POSITIVE_EDGE		0x40
@@ -936,8 +938,8 @@ static void au6601_prepare_data(struct au6601_host *host,
 	au6601_prepare_sg_miter(host);
 	host->blocks = data->blocks;
 
+	/* TODO: find MIN and MAX blocksize for SDMA */
 	if (!disable_dma &&
-			host->blocks > 1 &&
 			data->blksz == host->mmc->max_blk_size) {
 		dma = 1;
 
@@ -1094,7 +1096,8 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 		if (intmask & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY))
 			au6601_transfer_data(host);
 
-		if (intmask & AU6601_INT_DATA_END || !host->blocks) {
+		if (intmask & (AU6601_INT_DATA_END | AU6601_INT_DMA_END)
+		    || !host->blocks) {
 			if (host->cmd) {
 				/*
 				 * Data managed to finish before the
@@ -1590,13 +1593,13 @@ static void au6601_init_mmc(struct au6601_host *host)
 	mmc->caps2 = MMC_CAP2_NO_SDIO;
 	mmc->ops = &au6601_sdc_ops;
 
-	/* Hardware cannot do scatter lists? */
+	/* Hardware cannot do scatter lists */
 	mmc->max_segs = AU6601_MAX_SEGMENTS;
 
-	mmc->max_blk_size = AU6601_MAX_BLOCK_LENGTH;
+	mmc->max_blk_size = AU6601_MAX_BLOCK_SIZE;
 	mmc->max_blk_count = AU6601_MAX_BLOCK_COUNT;
 
-	mmc->max_seg_size = AU6601_MAX_BLOCK_LENGTH * AU6601_MAX_DMA_BLOCKS;
+	mmc->max_seg_size = AU6601_MAX_BLOCK_SIZE * AU6601_MAX_DMA_BLOCKS;
 	mmc->max_req_size = mmc->max_seg_size * mmc->max_segs;
 }
 
@@ -1648,7 +1651,7 @@ static int au6601_dma_alloc(struct au6601_host *host)
 	}
 
 	host->virt_base = dmam_alloc_coherent(host->dev,
-		AU6601_MAX_BLOCK_LENGTH * AU6601_MAX_DMA_BLOCKS
+		AU6601_MAX_BLOCK_SIZE * AU6601_MAX_DMA_BLOCKS
 		* AU6601_DMA_LOCAL_SEGMENTS,
 		&host->phys_base, GFP_KERNEL);
 
