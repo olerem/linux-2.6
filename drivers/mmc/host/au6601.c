@@ -651,25 +651,6 @@ static void au6601_reset(struct au6601_host *host, u8 val)
 	dev_err(host->dev, "%s: timeout\n", __func__);
 }
 
-static void au6601_set_power(struct au6601_host *host, u8 card_type)
-{
-	/* if card_type is set, assume we wont to power on */
-	if (card_type) {
-		/* TODO: why do we use card type here? */
-		au6601_write8(host, card_type, AU6601_POWER_CONTROL);
-		/* TODO: why do we need this msleep? */
-		mdelay(40);
-		au6601_write8(host, card_type, AU6601_OUTPUT_ENABLE);
-		/* seems like au6621 needs this weird workaround */
-		au6601_write8(host, AU6601_DATA_WRITE,
-			      AU6601_DATA_XFER_CTRL);
-	} else {
-		au6601_write8(host, card_type, AU6601_OUTPUT_ENABLE);
-		au6601_write8(host, card_type, AU6601_POWER_CONTROL);
-	}
-	mdelay(100);
-}
-
 static void au6601_trigger_data_transfer(struct au6601_host *host,
 		unsigned int dma)
 {
@@ -1376,7 +1357,7 @@ static void au6601_set_bus_width(struct mmc_host *mmc, struct mmc_ios *ios)
 	struct au6601_host *host = mmc_priv(mmc);
 
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
-		au6601_write8(host, 0x0, AU6601_REG_BUS_CTRL);
+		au6601_write8(host, 0, AU6601_REG_BUS_CTRL);
 		au6601_rmw8(host, AU6601_CLK_DELAY,
 			    AU6601_CLK_POSITIVE_EDGE_ALL, 0);
 	} else if (ios->bus_width == MMC_BUS_WIDTH_4) {
@@ -1467,9 +1448,9 @@ static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		pci_aspm_ctrl(host, 0);
 		au6601_write8(host, AU6601_SD_CARD,
 			      AU6601_ACTIVE_CTRL);
-		au6601_write8(host, 0x0, AU6601_OPT);
+		au6601_write8(host, 0, AU6601_OPT);
 		au6601_write8(host, 0x20, AU6601_CLK_DELAY);
-		au6601_write8(host, 0x0, AU6601_REG_BUS_CTRL);
+		au6601_write8(host, 0, AU6601_REG_BUS_CTRL);
 		au6601_set_clock(host, ios->clock);
 		/* set power on Vcc */
 		au6601_write8(host, AU6601_SD_CARD,
@@ -1644,9 +1625,10 @@ static void au6601_hw_init(struct au6601_host *host)
 #endif
 	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
 	au6601_write8(host, cfg->dma, AU6601_DMA_BOUNDARY);
-	//au6601_write8(host, 0x0, AU6601_OPT);
+	//au6601_write8(host, 0, AU6601_OPT);
 
-	au6601_set_power(host, 0);
+	au6601_write8(host, 0, AU6601_OUTPUT_ENABLE);
+	au6601_write8(host, 0, AU6601_POWER_CONTROL);
 	pci_aspm_ctrl(host, 1);
 
 	host->dma_on = 0;
@@ -1775,13 +1757,14 @@ static void au6601_hw_uninit(struct au6601_host *host)
 
 	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 
-	au6601_write8(host, 0x0, AU6601_DETECT_STATUS);
+	au6601_write8(host, 0, AU6601_DETECT_STATUS);
 	au6601_mask_sd_irqs(host);
 	au6601_mask_ms_irqs(host);
 
-	au6601_set_power(host, 0);
+	au6601_write8(host, 0, AU6601_OUTPUT_ENABLE);
+	au6601_write8(host, 0, AU6601_POWER_CONTROL);
 
-	au6601_write8(host, 0x0, AU6601_OPT);
+	au6601_write8(host, 0, AU6601_OPT);
 	pci_aspm_ctrl(host, 1);
 }
 
