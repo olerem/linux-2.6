@@ -345,7 +345,8 @@ static void au6601_send_cmd(struct au6601_host *host,
 static void au6601_prepare_data(struct au6601_host *host,
 				struct mmc_command *cmd);
 static void au6601_finish_data(struct au6601_host *host);
-static void au6601_request_complete(struct au6601_host *host);
+static void au6601_request_complete(struct au6601_host *host,
+				    bool cancel_timeout);
 static int au6601_get_cd(struct mmc_host *mmc);
 
 static const struct au6601_dev_cfg au6601_cfg = {
@@ -813,7 +814,7 @@ static void au6601_finish_command(struct au6601_host *host)
 
 	if (host->cmd->flags & MMC_RSP_PRESENT) {
 		cmd->resp[0] = au6601_read32be(host, AU6601_REG_CMD_RSP0);
-		dev_dbg(host->dev, "RSP0: 0x%02x\n", cmd->resp[0]);
+		dev_dbg(host->dev, "RSP0: 0x%04x\n", cmd->resp[0]);
 		if (host->cmd->flags & MMC_RSP_136) {
 			cmd->resp[1] =
 				au6601_read32be(host, AU6601_REG_CMD_RSP1);
@@ -821,7 +822,7 @@ static void au6601_finish_command(struct au6601_host *host)
 				au6601_read32be(host, AU6601_REG_CMD_RSP2);
 			cmd->resp[3] =
 				au6601_read32be(host, AU6601_REG_CMD_RSP3);
-			dev_dbg(host->dev, "RSP1,2,3: 0x%02x 0x%02x 0x%02x\n",
+			dev_dbg(host->dev, "RSP1,2,3: 0x%04x 0x%04x 0x%04x\n",
 				cmd->resp[1], cmd->resp[2], cmd->resp[3]);
 		}
 
@@ -836,7 +837,7 @@ static void au6601_finish_command(struct au6601_host *host)
 	} else {
 		/* Processed actual command. */
 		if (!host->data)
-			au6601_request_complete(host);
+			au6601_request_complete(host, 1);
 		else if (host->data_early)
 			au6601_finish_data(host);
 		else if (host->trigger_dma_dac) {
@@ -888,7 +889,7 @@ static void au6601_finish_data(struct au6601_host *host)
 		}
 		au6601_send_cmd(host, data->stop);
 	} else
-		au6601_request_complete(host);
+		au6601_request_complete(host, 1);
 }
 
 static void au6601_prepare_sg_miter(struct au6601_host *host)
@@ -928,7 +929,8 @@ static void au6601_prepare_data(struct au6601_host *host,
 
 	/* TODO: find MIN and MAX blocksize for SDMA */
 	if (!disable_dma &&
-			data->blksz == host->mmc->max_blk_size) {
+			data->blksz > 0x100) {
+			//data->blksz == host->mmc->max_blk_size) {
 		dma = 1;
 
 		if (data->flags & MMC_DATA_WRITE) {
@@ -955,10 +957,9 @@ static void au6601_send_cmd(struct au6601_host *host,
 	if (!cmd->data && cmd->busy_timeout > 9000)
 		timeout = DIV_ROUND_UP(cmd->busy_timeout, 1000) * HZ + HZ;
 	else
-		timeout = 10 * HZ;
+		timeout = 10000;
 
 	host->cmd = cmd;
-	au6601_prepare_data(host, cmd);
 
 	dev_dbg(host->dev, "send CMD. opcode: 0x%02x, arg; 0x%08x\n", cmd->opcode,
 		cmd->arg);
@@ -991,6 +992,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 	au6601_write8(host, ctrl | AU6601_CMD_START_XFER,
 		 AU6601_CMD_XFER_CTRL);
 
+	au6601_prepare_data(host, cmd);
 	schedule_delayed_work(&host->timeout_work, msecs_to_jiffies(timeout));
 }
 
@@ -1018,7 +1020,7 @@ static void au6601_cmd_irq(struct au6601_host *host, u32 intmask)
 		host->cmd->error = -EILSEQ;
 
 	if (host->cmd->error) {
-		au6601_request_complete(host);
+		au6601_request_complete(host, 1);
 		return;
 	}
 
@@ -1063,10 +1065,12 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 		dev_err(host->dev,
 			"Got data interrupt 0x%08x even though no data operation was in progress.\n",
 			(unsigned)intmask);
+		au6601_reset(host, AU6601_RESET_DATA);
 
 		if (host->cmd && intmask & AU6601_INT_ERROR_MASK) {
 			host->cmd->error = -ETIMEDOUT;
-			au6601_request_complete(host);
+			au6601_reset(host, AU6601_RESET_CMD);
+			au6601_request_complete(host, 1);
 		}
 		return;
 	}
@@ -1127,7 +1131,7 @@ static void au6601_cd_irq(struct au6601_host *host, u32 intmask)
 		else
 			host->mrq->cmd->error = -ENOMEDIUM;
 
-		au6601_request_complete(host);
+		au6601_request_complete(host, 1);
 	}
 
 	mmc_detect_change(host->mmc, msecs_to_jiffies(1));
@@ -1420,7 +1424,7 @@ static void au6601_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	else {
 		dev_dbg(host->dev, "card is not present\n");
 		mrq->cmd->error = -ENOMEDIUM;
-		au6601_request_complete(host);
+		au6601_request_complete(host, 1);
 	}
 
 	mutex_unlock(&host->cmd_mutex);
@@ -1512,7 +1516,8 @@ static const struct mmc_host_ops au6601_sdc_ops = {
 	.start_signal_voltage_switch = au6601_signal_voltage_switch,
 };
 
-static void au6601_request_complete(struct au6601_host *host)
+static void au6601_request_complete(struct au6601_host *host,
+				    bool cancel_timeout)
 {
 	struct mmc_request *mrq;
 
@@ -1525,7 +1530,8 @@ static void au6601_request_complete(struct au6601_host *host)
 		return;
 	}
 
-	cancel_delayed_work_sync(&host->timeout_work);
+	if (cancel_timeout)
+		cancel_delayed_work_sync(&host->timeout_work);
 
 	mrq = host->mrq;
 
@@ -1564,15 +1570,13 @@ static void au6601_timeout_timer(struct work_struct *work)
 
 		if (host->data) {
 			host->data->error = -ETIMEDOUT;
-			au6601_finish_data(host);
 		} else {
 			if (host->cmd)
 				host->cmd->error = -ETIMEDOUT;
 			else
 				host->mrq->cmd->error = -ETIMEDOUT;
-
-			au6601_request_complete(host);
 		}
+		au6601_request_complete(host, 0);
 	}
 
 	mmiowb();
