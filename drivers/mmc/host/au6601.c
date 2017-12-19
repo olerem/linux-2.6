@@ -831,7 +831,7 @@ static void au6601_finish_command(struct au6601_host *host)
 	host->cmd->error = 0;
 
 	if (host->cmd == host->mrq->sbc) {
-		dev_dbg(host->dev, "Finished CMD23, now send actual command.\n");
+		dev_info(host->dev, "Finished CMD23, now send actual command.\n");
 		host->cmd = NULL;
 		au6601_send_cmd(host, host->mrq->cmd);
 	} else {
@@ -914,10 +914,6 @@ static void au6601_prepare_data(struct au6601_host *host,
 		return;
 
 	dev_dbg(host->dev, "prepare DATA\n");
-	/* Sanity checks */
-	//BUG_ON(data->blksz * data->blocks > 524288);
-	BUG_ON(data->blksz > host->mmc->max_blk_size);
-	BUG_ON(data->blocks > AU6601_MAX_BLOCK_COUNT);
 
 	host->data = data;
 	host->data_early = 0;
@@ -929,8 +925,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 
 	/* TODO: find MIN and MAX blocksize for SDMA */
 	if (!disable_dma &&
-			data->blksz > 0x100) {
-			//data->blksz == host->mmc->max_blk_size) {
+			data->blksz == host->mmc->max_blk_size) {
 		dma = 1;
 
 		if (data->flags & MMC_DATA_WRITE) {
@@ -951,15 +946,17 @@ static void au6601_send_cmd(struct au6601_host *host,
 	unsigned long timeout;
 	u8 ctrl = 0;
 
-	cancel_delayed_work_sync(&host->timeout_work);
+	if (cancel_delayed_work_sync(&host->timeout_work))
+		dev_warn(host->dev, "delayed work was canceled, but no work was expected!\n");
 
 	/* TODO: Do we support busy timeout? */
-	if (!cmd->data && cmd->busy_timeout > 9000)
-		timeout = DIV_ROUND_UP(cmd->busy_timeout, 1000) * HZ + HZ;
+	if (!cmd->data && cmd->busy_timeout)
+		timeout = cmd->busy_timeout;
 	else
 		timeout = 10000;
 
 	host->cmd = cmd;
+	au6601_prepare_data(host, cmd);
 
 	dev_dbg(host->dev, "send CMD. opcode: 0x%02x, arg; 0x%08x\n", cmd->opcode,
 		cmd->arg);
@@ -992,7 +989,6 @@ static void au6601_send_cmd(struct au6601_host *host,
 	au6601_write8(host, ctrl | AU6601_CMD_START_XFER,
 		 AU6601_CMD_XFER_CTRL);
 
-	au6601_prepare_data(host, cmd);
 	schedule_delayed_work(&host->timeout_work, msecs_to_jiffies(timeout));
 }
 
@@ -1002,25 +998,46 @@ static void au6601_send_cmd(struct au6601_host *host,
  *									     *
 \*****************************************************************************/
 
+
+static void au6601_err_irq(struct au6601_host *host, u32 intmask)
+{
+	dev_dbg(host->dev, "ERR IRQ %x\n", intmask);
+
+	if (host->cmd) {
+		if (intmask & AU6601_INT_CMD_TIMEOUT_ERR)
+			host->cmd->error = -ETIMEDOUT;
+		else
+			host->cmd->error = -EILSEQ;
+
+		au6601_reset(host, AU6601_RESET_CMD);
+	}
+
+	if (host->data) {
+		if (intmask & AU6601_INT_DATA_TIMEOUT_ERR)
+			host->data->error = -ETIMEDOUT;
+		else
+			host->data->error = -EILSEQ;
+
+		host->data->bytes_xfered = 0;
+		au6601_reset(host, AU6601_RESET_DATA);
+	}
+
+	au6601_request_complete(host, 1);
+}
+
 static void au6601_cmd_irq(struct au6601_host *host, u32 intmask)
 {
+	intmask &= AU6601_INT_CMD_MASK;
+
+	if (!intmask)
+		return;
+
 	dev_dbg(host->dev, "CMD IRQ %x\n", intmask);
 
 	if (!host->cmd) {
 		dev_err(host->dev,
 			"Got command interrupt 0x%08x even though no command operation was in progress.\n",
 			intmask);
-		return;
-	}
-
-	if (intmask & AU6601_INT_CMD_TIMEOUT_ERR)
-		host->cmd->error = -ETIMEDOUT;
-	else if (intmask & (AU6601_INT_CMD_CRC_ERR | AU6601_INT_CMD_END_BIT_ERR |
-			AU6601_INT_CMD_INDEX_ERR))
-		host->cmd->error = -EILSEQ;
-
-	if (host->cmd->error) {
-		au6601_request_complete(host, 1);
 		return;
 	}
 
@@ -1047,69 +1064,45 @@ static void au6601_cmd_irq(struct au6601_host *host, u32 intmask)
 
 static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 {
+	intmask &= AU6601_INT_DATA_MASK;
+
+	if (!intmask)
+		return;
+
 	dev_dbg(host->dev, "DATA IRQ %x\n", intmask);
 
 	if (!host->data) {
-		/* FIXME: Ist is same for AU6601
-		 * The "data complete" interrupt is also used to
-		 * indicate that a busy state has ended. See comment
-		 * above in au6601_cmd_irq().
-		 */
-		if (host->cmd && (host->cmd->flags & MMC_RSP_BUSY)) {
-			if (intmask & AU6601_INT_DATA_END) {
-				au6601_finish_command(host);
-				return;
-			}
-		}
-
 		dev_err(host->dev,
 			"Got data interrupt 0x%08x even though no data operation was in progress.\n",
 			(unsigned)intmask);
 		au6601_reset(host, AU6601_RESET_DATA);
-
-		if (host->cmd && intmask & AU6601_INT_ERROR_MASK) {
-			host->cmd->error = -ETIMEDOUT;
-			au6601_reset(host, AU6601_RESET_CMD);
-			au6601_request_complete(host, 1);
-		}
 		return;
 	}
 
-	if (intmask & AU6601_INT_DATA_TIMEOUT_ERR)
-		host->data->error = -ETIMEDOUT;
-	else if (intmask & AU6601_INT_DATA_END_BIT_ERR)
-		host->data->error = -EILSEQ;
-	else if (intmask & AU6601_INT_DATA_CRC_ERR)
-		host->data->error = -EILSEQ;
+	if (intmask & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY))
+		au6601_transfer_data(host);
 
-	if (host->data->error)
-		au6601_finish_data(host);
-	else {
-		if (intmask & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY))
+	if (intmask & (AU6601_INT_DATA_END | AU6601_INT_DMA_END)
+	    || !host->blocks) {
+		if (host->cmd) {
+			/*
+			 * Data managed to finish before the
+			 * command completed. Make sure we do
+			 * things in the proper order.
+			 */
+			host->data_early = 1;
+		} else if (host->blocks && !host->dma_on) {
+			/*
+			 * Probably we do multi block operation.
+			 * Prepare PIO for next block.
+			 */
+			au6601_trigger_data_transfer(host, 0);
+		} else if (host->blocks && host->dma_on) {
 			au6601_transfer_data(host);
-
-		if (intmask & (AU6601_INT_DATA_END | AU6601_INT_DMA_END)
-		    || !host->blocks) {
-			if (host->cmd) {
-				/*
-				 * Data managed to finish before the
-				 * command completed. Make sure we do
-				 * things in the proper order.
-				 */
-				host->data_early = 1;
-			} else if (host->blocks && !host->dma_on) {
-				/*
-				 * Probably we do multi block operation.
-				 * Prepare PIO for next block.
-				 */
-				au6601_trigger_data_transfer(host, 0);
-			} else if (host->blocks && host->dma_on) {
+		} else {
+			if (host->dma_on)
 				au6601_transfer_data(host);
-			} else {
-				if (host->dma_on)
-					au6601_transfer_data(host);
-				au6601_finish_data(host);
-			}
+			au6601_finish_data(host);
 		}
 	}
 }
@@ -1141,7 +1134,7 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 {
 	struct au6601_host *host = d;
 	irqreturn_t ret = IRQ_HANDLED;
-	u32 intmask;
+	u32 intmask, tmp;
 
 	mutex_lock(&host->cmd_mutex);
 
@@ -1149,8 +1142,7 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 
 	/* some thing bad */
 	if (unlikely(!intmask || AU6601_INT_ALL_MASK == intmask)) {
-
-		dev_warn(host->dev, "got unhandled IRQ with %x\n",
+		dev_dbg(host->dev, "unexpected IRQ: 0x%04x\n",
 			 intmask);
 		ret = IRQ_NONE;
 		goto exit;
@@ -1158,14 +1150,15 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 
 	dev_dbg(host->dev, "IRQ %x\n", intmask);
 
-	if (intmask & AU6601_INT_CMD_MASK) {
-		au6601_cmd_irq(host, intmask & AU6601_INT_CMD_MASK);
-		intmask &= ~AU6601_INT_CMD_MASK;
-	}
-
-	if (intmask & AU6601_INT_DATA_MASK) {
-		au6601_data_irq(host, intmask & AU6601_INT_DATA_MASK);
-		intmask &= ~AU6601_INT_DATA_MASK;
+	tmp = intmask & (AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK);
+	if (tmp) {
+		if (tmp & AU6601_INT_ERROR_MASK)
+			au6601_err_irq(host, tmp);
+		else {
+			au6601_cmd_irq(host, tmp);
+			au6601_data_irq(host, tmp);
+		}
+		intmask &= ~(AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK);
 	}
 
 	if (intmask & (AU6601_INT_CARD_INSERT | AU6601_INT_CARD_REMOVE)) {
@@ -1180,10 +1173,8 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 		intmask &= ~AU6601_INT_OVER_CURRENT_ERR;
 	}
 
-	if (intmask & 0xFFFF7FFF) {
-		dev_warn(host->dev, "0xFFFF7FFF got not handled IRQ with %x\n",
-			 intmask);
-	}
+	if (intmask)
+		dev_dbg(host->dev, "got not handled IRQ: 0x%04x\n", intmask);
 
 exit:
 	mutex_unlock(&host->cmd_mutex);
@@ -1459,6 +1450,7 @@ static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		/* set power on Vcc */
 		au6601_write8(host, AU6601_SD_CARD,
 			      AU6601_POWER_CONTROL);
+		mdelay(20);
 		break;
 	case MMC_POWER_ON:
 		if (ios->power_mode == host->cur_power_mode) {
@@ -1474,6 +1466,7 @@ static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		au6601_write8(host, AU6601_DATA_WRITE,
 			      AU6601_DATA_XFER_CTRL);
 		au6601_write8(host, 0x7d, AU6601_TIME_OUT_CTRL);
+		mdelay(100);
 		break;
 	default:
 		dev_err(host->dev, "Unknown power parametr\n");
