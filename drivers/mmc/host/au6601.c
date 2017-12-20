@@ -1585,7 +1585,7 @@ static void au6601_init_mmc(struct au6601_host *host)
 	mmc->f_min = AU6601_MIN_CLOCK;
 	mmc->f_max = AU6601_MAX_CLOCK;
 	/* mesured Vdd: 3.4 and 1.8 */
-	mmc->ocr_avail = MMC_VDD_165_195 | MMC_VDD_32_33 | MMC_VDD_33_34;
+	mmc->ocr_avail = MMC_VDD_165_195 | MMC_VDD_33_34;
 	mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SD_HIGHSPEED;
 	mmc->caps2 = MMC_CAP2_NO_SDIO;
 	mmc->ops = &au6601_sdc_ops;
@@ -1751,12 +1751,12 @@ error_release_regions:
 
 static void au6601_hw_uninit(struct au6601_host *host)
 {
+	au6601_mask_sd_irqs(host);
+	au6601_mask_ms_irqs(host);
 
 	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 
 	au6601_write8(host, 0, AU6601_DETECT_STATUS);
-	au6601_mask_sd_irqs(host);
-	au6601_mask_ms_irqs(host);
 
 	au6601_write8(host, 0, AU6601_OUTPUT_ENABLE);
 	au6601_write8(host, 0, AU6601_POWER_CONTROL);
@@ -1771,14 +1771,12 @@ static void au6601_pci_remove(struct pci_dev *pdev)
 
 	host = pci_get_drvdata(pdev);
 
-	mutex_lock(&host->cmd_mutex);
-
-	cancel_delayed_work_sync(&host->timeout_work);
-
-	au6601_hw_uninit(host);
-	mutex_unlock(&host->cmd_mutex);
+	flush_delayed_work(&host->timeout_work);
 
 	mmc_remove_host(host->mmc);
+
+	au6601_hw_uninit(host);
+
 	mmc_free_host(host->mmc);
 
 	pci_release_regions(pdev);
@@ -1791,9 +1789,8 @@ static int au6601_suspend(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct au6601_host *host = pci_get_drvdata(pdev);
 
-	mutex_lock(&host->cmd_mutex);
+	flush_delayed_work(&host->timeout_work);
 	au6601_hw_uninit(host);
-	mutex_unlock(&host->cmd_mutex);
 	return 0;
 }
 
