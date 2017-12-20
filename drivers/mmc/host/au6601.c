@@ -1425,9 +1425,6 @@ static void au6601_set_power_mode(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct au6601_host *host = mmc_priv(mmc);
 
-	if (ios->power_mode == host->cur_power_mode)
-		return;
-
 	switch (ios->power_mode) {
 	case MMC_POWER_OFF:
 		au6601_set_clock(host, ios->clock);
@@ -1464,8 +1461,6 @@ static void au6601_set_power_mode(struct mmc_host *mmc, struct mmc_ios *ios)
 	default:
 		dev_err(host->dev, "Unknown power parametr\n");
 	}
-
-	host->cur_power_mode = ios->power_mode;
 }
 
 static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
@@ -1477,9 +1472,13 @@ static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	dev_dbg(host->dev, "set ios. bus width: %x, power mode: %x\n",
 		ios->bus_width, ios->power_mode);
 
-	au6601_set_power_mode(mmc, ios);
-	au6601_set_bus_width(mmc, ios);
-	au6601_set_clock(host, ios->clock);
+	if (ios->power_mode != host->cur_power_mode) {
+		au6601_set_power_mode(mmc, ios);
+		host->cur_power_mode = ios->power_mode;
+	} else {
+		au6601_set_bus_width(mmc, ios);
+		au6601_set_clock(host, ios->clock);
+	}
 
 	mutex_unlock(&host->cmd_mutex);
 }
