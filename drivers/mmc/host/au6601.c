@@ -1421,14 +1421,12 @@ static void au6601_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	mutex_unlock(&host->cmd_mutex);
 }
 
-static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+static void au6601_set_power_mode(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct au6601_host *host = mmc_priv(mmc);
 
-	mutex_lock(&host->cmd_mutex);
-
-	dev_dbg(host->dev, "set ios. bus width: %x, power mode: %x\n",
-		ios->bus_width, ios->power_mode);
+	if (ios->power_mode == host->cur_power_mode)
+		return;
 
 	switch (ios->power_mode) {
 	case MMC_POWER_OFF:
@@ -1440,6 +1438,8 @@ static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		pci_aspm_ctrl(host, 1);
 		break;
 	case MMC_POWER_UP:
+		break;
+	case MMC_POWER_ON:
 		pci_aspm_ctrl(host, 0);
 		au6601_write8(host, AU6601_SD_CARD,
 			      AU6601_ACTIVE_CTRL);
@@ -1451,13 +1451,6 @@ static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		au6601_write8(host, AU6601_SD_CARD,
 			      AU6601_POWER_CONTROL);
 		mdelay(20);
-		break;
-	case MMC_POWER_ON:
-		if (ios->power_mode == host->cur_power_mode) {
-			au6601_set_bus_width(mmc, ios);
-			au6601_set_clock(host, ios->clock);
-			break;
-		}
 		au6601_set_clock(host, ios->clock);
 
 		au6601_write8(host, AU6601_SD_CARD,
@@ -1473,6 +1466,21 @@ static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	}
 
 	host->cur_power_mode = ios->power_mode;
+}
+
+static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+{
+	struct au6601_host *host = mmc_priv(mmc);
+
+	mutex_lock(&host->cmd_mutex);
+
+	dev_dbg(host->dev, "set ios. bus width: %x, power mode: %x\n",
+		ios->bus_width, ios->power_mode);
+
+	au6601_set_power_mode(mmc, ios);
+	au6601_set_bus_width(mmc, ios);
+	au6601_set_clock(host, ios->clock);
+
 	mutex_unlock(&host->cmd_mutex);
 }
 
