@@ -690,7 +690,7 @@ done:
 
 static void au6601_read_block(struct au6601_host *host)
 {
-	size_t blksize, len, chunk = 0;
+	size_t blksize, len;
 	void __iomem *virt_base = host->virt_base;
 	u8 *buf;
 
@@ -714,21 +714,8 @@ static void au6601_read_block(struct au6601_host *host)
 			virt_base += len;
 			len = 0;
 		} else {
-			while (len) {
-				u32 scratch;
-
-				if (chunk == 0) {
-					scratch = au6601_read32(host, AU6601_REG_BUFFER);
-					chunk = 4;
-				}
-
-				*buf = scratch & 0xFF;
-
-				buf++;
-				scratch >>= 8;
-				chunk--;
-				len--;
-			}
+			ioread32_rep(host->iobase + AU6601_REG_BUFFER,
+				     buf, len >> 2);
 		}
 	}
 
@@ -737,9 +724,8 @@ static void au6601_read_block(struct au6601_host *host)
 
 static void au6601_write_block(struct au6601_host *host)
 {
-	size_t blksize, len, chunk = 0;
+	size_t blksize, len;
 	void __iomem *virt_base = host->virt_base;
-	u32 scratch = 0;
 	u8 *buf;
 
 	blksize = host->data->blksz * host->requested_blocks;
@@ -763,20 +749,8 @@ static void au6601_write_block(struct au6601_host *host)
 			virt_base += len;
 			len = 0;
 		} else {
-			while (len) {
-				scratch |= (u32)*buf << (chunk * 8);
-
-				buf++;
-				chunk++;
-				len--;
-
-				if ((chunk == 4) || ((len == 0)
-						&& (blksize == 0))) {
-					au6601_write32(host, scratch, AU6601_REG_BUFFER);
-					chunk = 0;
-					scratch = 0;
-				}
-			}
+			iowrite32_rep(host->iobase + AU6601_REG_BUFFER,
+				      buf, len >> 2);
 		}
 	}
 
