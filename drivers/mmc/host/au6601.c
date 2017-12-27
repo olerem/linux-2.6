@@ -688,6 +688,41 @@ done:
  *									     *
 \*****************************************************************************/
 
+static void au6601_trf_block_pio(struct au6601_host *host, bool read)
+{
+	size_t blksize, len;
+	u8 *buf;
+
+	if (!host->blocks)
+		return;
+
+	if (!!(host->data->flags & MMC_DATA_READ) != read) {
+		dev_err(host->dev, "got unexpected direction %i != %i\n",
+			!!(host->data->flags & MMC_DATA_READ), read);
+	}
+
+	if (!sg_miter_next(&host->sg_miter))
+		return;
+
+	blksize = host->data->blksz * host->requested_blocks;
+	len = min(host->sg_miter.length, blksize);
+
+	dev_dbg(host->dev, "PIO, %s block size: 0x%lx\n",
+		read ? "read" : "write", blksize);
+
+	host->sg_miter.consumed = len;
+	host->blocks -= host->requested_blocks;
+
+	buf = host->sg_miter.addr;
+
+	if (read)
+		ioread32_rep(host->iobase + AU6601_REG_BUFFER, buf, len >> 2);
+	else
+		iowrite32_rep(host->iobase + AU6601_REG_BUFFER, buf, len >> 2);
+
+	sg_miter_stop(&host->sg_miter);
+}
+
 static void au6601_read_block(struct au6601_host *host)
 {
 	size_t blksize, len;
@@ -1038,6 +1073,8 @@ static void au6601_cmd_irq(struct au6601_host *host, u32 intmask)
 
 static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 {
+	u32 tmp;
+
 	intmask &= AU6601_INT_DATA_MASK;
 
 	if (!intmask)
@@ -1053,8 +1090,21 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 		return;
 	}
 
-	if (intmask & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY))
-		au6601_transfer_data(host);
+	tmp = intmask & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY);
+	switch (tmp)
+	{
+	case 0:
+		break;
+	case AU6601_INT_READ_BUF_RDY:
+		au6601_trf_block_pio(host, true);
+		break;
+	case AU6601_INT_WRITE_BUF_RDY:
+		au6601_trf_block_pio(host, false);
+		break;
+	default:
+		dev_err(host->dev, "Got READ_BUF_RDY and WRITE_BUF_RDY at same time: \n");
+		break;
+	}
 
 	if (intmask & (AU6601_INT_DATA_END | AU6601_INT_DMA_END)
 	    || !host->blocks) {
