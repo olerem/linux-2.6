@@ -1083,6 +1083,7 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 	dev_dbg(host->dev, "DATA IRQ %x\n", intmask);
 
 	if (!host->data) {
+		dev_err(host->dev,
 			"Got data interrupt 0x%08x even though no data operation was in progress.\n",
 			(unsigned)intmask);
 		au6601_reset(host, AU6601_RESET_DATA);
