@@ -1102,7 +1102,7 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 		au6601_trf_block_pio(host, false);
 		break;
 	default:
-		dev_err(host->dev, "Got READ_BUF_RDY and WRITE_BUF_RDY at same time: \n");
+		dev_err(host->dev, "Got READ_BUF_RDY and WRITE_BUF_RDY at same time\n");
 		break;
 	}
 
@@ -1445,6 +1445,45 @@ static void au6601_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	mutex_unlock(&host->cmd_mutex);
 }
 
+static void au6601_pre_req(struct mmc_host *mmc,
+			   struct mmc_request *mrq)
+{
+#if 0
+	struct dw_mci_slot *slot = mmc_priv(mmc);
+	struct mmc_data *data = mrq->data;
+
+	if (!slot->host->use_dma || !data)
+		return;
+
+	/* This data might be unmapped at this time */
+	data->host_cookie = COOKIE_UNMAPPED;
+
+	if (dw_mci_pre_dma_transfer(slot->host, mrq->data,
+				COOKIE_PRE_MAPPED) < 0)
+		data->host_cookie = COOKIE_UNMAPPED;
+#endif
+}
+
+static void au6601_post_req(struct mmc_host *mmc,
+			    struct mmc_request *mrq,
+			    int err)
+{
+#if 0
+	struct dw_mci_slot *slot = mmc_priv(mmc);
+	struct mmc_data *data = mrq->data;
+
+	if (!slot->host->use_dma || !data)
+		return;
+
+	if (data->host_cookie != COOKIE_UNMAPPED)
+		dma_unmap_sg(slot->host->dev,
+			     data->sg,
+			     data->sg_len,
+			     mmc_get_dma_dir(data));
+	data->host_cookie = COOKIE_UNMAPPED;
+#endif
+}
+
 static void au6601_set_power_mode(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct au6601_host *host = mmc_priv(mmc);
@@ -1535,6 +1574,8 @@ static const struct mmc_host_ops au6601_sdc_ops = {
 	.card_busy	= au6601_card_busy,
 	.get_cd		= au6601_get_cd,
 	.get_ro		= au6601_get_ro,
+	.post_req	= au6601_post_req,
+	.pre_req	= au6601_pre_req,
 	.request	= au6601_request,
 	.set_ios	= au6601_set_ios,
 	.start_signal_voltage_switch = au6601_signal_voltage_switch,
