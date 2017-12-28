@@ -36,11 +36,11 @@
 #define AU6601_BASE_CLOCK			MHZ_TO_HZ(31)
 #define AU6601_MIN_CLOCK			(150 * 1000)
 #define AU6601_MAX_CLOCK			MHZ_TO_HZ(208)
-#define AU6601_MAX_SEGMENTS			1
-#define AU6601_MAX_BLOCK_SIZE			4096
+#define AU6601_MAX_SEGMENTS			10
+#define AU6601_MAX_BLOCK_SIZE			0x1000
 #define AU6601_MAX_DMA_BLOCKS			1
 #define AU6601_DMA_LOCAL_SEGMENTS		1
-#define AU6601_MAX_BLOCK_COUNT			1
+#define AU6601_MAX_BLOCK_COUNT			AU6601_MAX_SEGMENTS
 
 /* SDMA phy address. Higer then 0x0800.0000? */
 #define AU6601_REG_SDMA_ADDR			0x00
@@ -897,8 +897,8 @@ static void au6601_finish_data(struct au6601_host *host)
 			au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 		}
 		au6601_send_cmd(host, data->stop);
-	} else
-		au6601_request_complete(host, 1);
+	}
+	au6601_request_complete(host, 1);
 }
 
 static void au6601_prepare_sg_miter(struct au6601_host *host)
@@ -933,8 +933,9 @@ static void au6601_prepare_data(struct au6601_host *host,
 	host->blocks = data->blocks;
 
 	/* TODO: find MIN and MAX blocksize for SDMA */
-	if (!disable_dma &&
-			data->blksz == host->mmc->max_blk_size) {
+	//if (!disable_dma &&
+	if (0) {
+//			data->blksz == host->mmc->max_blk_size) {
 		dma = 1;
 
 		if (data->flags & MMC_DATA_WRITE) {
@@ -955,8 +956,7 @@ static void au6601_send_cmd(struct au6601_host *host,
 	unsigned long timeout;
 	u8 ctrl = 0;
 
-	if (cancel_delayed_work_sync(&host->timeout_work))
-		dev_warn(host->dev, "delayed work was canceled, but no work was expected!\n");
+	cancel_delayed_work_sync(&host->timeout_work);
 
 	/* TODO: Do we support busy timeout? */
 	if (!cmd->data && cmd->busy_timeout)
@@ -1083,7 +1083,6 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 	dev_dbg(host->dev, "DATA IRQ %x\n", intmask);
 
 	if (!host->data) {
-		dev_err(host->dev,
 			"Got data interrupt 0x%08x even though no data operation was in progress.\n",
 			(unsigned)intmask);
 		au6601_reset(host, AU6601_RESET_DATA);
@@ -1106,28 +1105,10 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 		break;
 	}
 
-	if (intmask & (AU6601_INT_DATA_END | AU6601_INT_DMA_END)
-	    || !host->blocks) {
-		if (host->cmd) {
-			/*
-			 * Data managed to finish before the
-			 * command completed. Make sure we do
-			 * things in the proper order.
-			 */
-			host->data_early = 1;
-		} else if (host->blocks && !host->dma_on) {
-			/*
-			 * Probably we do multi block operation.
-			 * Prepare PIO for next block.
-			 */
-			au6601_trigger_data_transfer(host, 0);
-		} else if (host->blocks && host->dma_on) {
-			au6601_transfer_data(host);
-		} else {
-			if (host->dma_on)
-				au6601_transfer_data(host);
-			au6601_finish_data(host);
-		}
+	if ((intmask & AU6601_INT_DATA_END) || !host->blocks) {
+		au6601_finish_data(host);
+	} else {
+		au6601_trigger_data_transfer(host, host->dma_on);
 	}
 }
 
@@ -1664,11 +1645,11 @@ static void au6601_init_mmc(struct au6601_host *host)
 
 	/* Hardware cannot do scatter lists */
 	mmc->max_segs = AU6601_MAX_SEGMENTS;
+	mmc->max_seg_size = AU6601_MAX_BLOCK_SIZE;
 
 	mmc->max_blk_size = AU6601_MAX_BLOCK_SIZE;
 	mmc->max_blk_count = AU6601_MAX_BLOCK_COUNT;
 
-	mmc->max_seg_size = AU6601_MAX_BLOCK_SIZE * AU6601_MAX_DMA_BLOCKS;
 	mmc->max_req_size = mmc->max_seg_size * mmc->max_segs;
 }
 
