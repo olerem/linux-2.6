@@ -302,10 +302,6 @@ struct au6601_host {
 	struct mmc_command *cmd;
 	struct mmc_data *data;
 	unsigned int dma_on:1;
-	unsigned int trigger_dma_dac:1;	/* Trigger Data after Command.
-					 * In some cases data ragister
-					 * should be triggered after
-					 * command was done */
 
 	struct mutex cmd_mutex;
 
@@ -1078,17 +1074,13 @@ static irqreturn_t au6601_irq(int irq, void *d)
 	u32 status;
 
 	status = au6601_read32(host, AU6601_REG_INT_STATUS);
+	if (!status)
+		return IRQ_NONE;
 
-	/* some thing bad */
-	if (status) {
-		host->irq_status_sd = status;
-		au6601_write32(host, status, AU6601_REG_INT_STATUS);
-		au6601_mask_sd_irqs(host);
-		return IRQ_WAKE_THREAD;
-	}
-
-	return IRQ_NONE;
-
+	host->irq_status_sd = status;
+	au6601_write32(host, status, AU6601_REG_INT_STATUS);
+	au6601_mask_sd_irqs(host);
+	return IRQ_WAKE_THREAD;
 }
 
 #if 0
@@ -1480,7 +1472,6 @@ static void au6601_request_complete(struct au6601_host *host,
 	host->cmd = NULL;
 	host->data = NULL;
 	host->dma_on = 0;
-	host->trigger_dma_dac = 0;
 
 	dev_dbg(host->dev, "request complete\n");
 	mmc_request_done(host->mmc, mrq);
