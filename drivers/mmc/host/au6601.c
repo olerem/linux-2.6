@@ -301,7 +301,6 @@ struct au6601_host {
 	struct mmc_request *mrq;
 	struct mmc_command *cmd;
 	struct mmc_data *data;
-	unsigned int data_early:1;      /* Data finished before cmd */
 	unsigned int dma_on:1;
 	unsigned int trigger_dma_dac:1;	/* Trigger Data after Command.
 					 * In some cases data ragister
@@ -723,98 +722,6 @@ static void au6601_trf_block_pio(struct au6601_host *host, bool read)
 	sg_miter_stop(&host->sg_miter);
 }
 
-static void au6601_read_block(struct au6601_host *host)
-{
-	size_t blksize, len;
-	void __iomem *virt_base = host->virt_base;
-	u8 *buf;
-
-	blksize = host->data->blksz * host->requested_blocks;
-	dev_dbg(host->dev, "read block size: 0x%lx, %s \n", blksize,
-		host->dma_on ? "DMA" : "PIO");
-
-	while (blksize) {
-		if (!sg_miter_next(&host->sg_miter))
-			BUG();
-
-		len = min(host->sg_miter.length, blksize);
-
-		blksize -= len;
-		host->sg_miter.consumed = len;
-
-		buf = host->sg_miter.addr;
-
-		if (host->dma_on) {
-			memcpy_fromio(buf, virt_base, len);
-			virt_base += len;
-			len = 0;
-		} else {
-			ioread32_rep(host->iobase + AU6601_REG_BUFFER,
-				     buf, len >> 2);
-		}
-	}
-
-	sg_miter_stop(&host->sg_miter);
-}
-
-static void au6601_write_block(struct au6601_host *host)
-{
-	size_t blksize, len;
-	void __iomem *virt_base = host->virt_base;
-	u8 *buf;
-
-	blksize = host->data->blksz * host->requested_blocks;
-
-	dev_dbg(host->dev, "write block size: 0x%lx, %s \n", blksize,
-		host->dma_on ? "DMA" : "PIO");
-
-	while (blksize) {
-		if (!sg_miter_next(&host->sg_miter))
-			BUG();
-
-		len = min(host->sg_miter.length, blksize);
-
-		blksize -= len;
-		host->sg_miter.consumed = len;
-
-		buf = host->sg_miter.addr;
-
-		if (host->dma_on) {
-			memcpy_toio(virt_base, buf, len);
-			virt_base += len;
-			len = 0;
-		} else {
-			iowrite32_rep(host->iobase + AU6601_REG_BUFFER,
-				      buf, len >> 2);
-		}
-	}
-
-	sg_miter_stop(&host->sg_miter);
-}
-
-static void au6601_transfer_data(struct au6601_host *host)
-{
-	dev_dbg(host->dev, "transfer data.\n");
-
-	if (host->blocks == 0)
-		return;
-
-	if (host->data->flags & MMC_DATA_READ)
-		au6601_read_block(host);
-	else
-		au6601_write_block(host);
-
-	host->blocks -= host->requested_blocks;
-	if (host->dma_on) {
-		host->dma_on = 0;
-		if (host->blocks || (!host->blocks &&
-				(host->data->flags & MMC_DATA_WRITE)))
-			au6601_trigger_data_transfer(host, 1);
-		else
-			au6601_finish_data(host);
-	}
-}
-
 static void au6601_finish_command(struct au6601_host *host)
 {
 	struct mmc_command *cmd = host->cmd;
@@ -843,19 +750,13 @@ static void au6601_finish_command(struct au6601_host *host)
 		dev_info(host->dev, "Finished CMD23, now send actual command.\n");
 		host->cmd = NULL;
 		au6601_send_cmd(host, host->mrq->cmd);
-	} else {
-		/* Processed actual command. */
-		if (!host->data)
-			au6601_request_complete(host, 1);
-		else if (host->data_early)
-			au6601_finish_data(host);
-		else if (host->trigger_dma_dac) {
-			host->dma_on = 1;
-			au6601_transfer_data(host);
-		}
-
-		host->cmd = NULL;
+		return;
 	}
+
+	/* Processed actual command. */
+	if (!host->data)
+		au6601_request_complete(host, 1);
+	host->cmd = NULL;
 }
 
 static void au6601_finish_data(struct au6601_host *host)
@@ -865,7 +766,6 @@ static void au6601_finish_data(struct au6601_host *host)
 	data = host->data;
 	host->data = NULL;
 	host->dma_on = 0;
-	host->trigger_dma_dac = 0;
 
 	dev_dbg(host->dev, "Finish DATA\n");
 	/*
@@ -916,7 +816,6 @@ static void au6601_prepare_sg_miter(struct au6601_host *host)
 static void au6601_prepare_data(struct au6601_host *host,
 				struct mmc_command *cmd)
 {
-	unsigned int dma = 0;
 	struct mmc_data *data = cmd->data;
 
 	if (!data)
@@ -925,29 +824,13 @@ static void au6601_prepare_data(struct au6601_host *host,
 	dev_dbg(host->dev, "prepare DATA\n");
 
 	host->data = data;
-	host->data_early = 0;
 	host->data->bytes_xfered = 0;
 	host->requested_blocks = 1;
 
 	au6601_prepare_sg_miter(host);
 	host->blocks = data->blocks;
 
-	/* TODO: find MIN and MAX blocksize for SDMA */
-	//if (!disable_dma &&
-	if (0) {
-//			data->blksz == host->mmc->max_blk_size) {
-		dma = 1;
-
-		if (data->flags & MMC_DATA_WRITE) {
-			/* prepare first write buffer */
-			/* Don't trigger data transfer now.
-			 * DMA may start it too early */
-			host->trigger_dma_dac = 1;
-			return;
-		}
-	}
-
-	au6601_trigger_data_transfer(host, dma);
+	au6601_trigger_data_transfer(host, 0);
 }
 
 static void au6601_send_cmd(struct au6601_host *host,
@@ -1109,7 +992,7 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 	if ((intmask & AU6601_INT_DATA_END) || !host->blocks) {
 		au6601_finish_data(host);
 	} else {
-		au6601_trigger_data_transfer(host, host->dma_on);
+		au6601_trigger_data_transfer(host, 0);
 	}
 }
 
