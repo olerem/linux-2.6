@@ -950,24 +950,19 @@ static void au6601_cmd_irq(struct au6601_host *host, u32 intmask)
 		au6601_finish_command(host);
 }
 
-static void au6601_data_irq(struct au6601_host *host, u32 intmask)
+static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 {
 	u32 tmp;
 
 	intmask &= AU6601_INT_DATA_MASK;
 
 	if (!intmask)
-		return;
+		return 1;
 
 	dev_dbg(host->dev, "DATA IRQ %x\n", intmask);
 
-	if (!host->data) {
-		dev_err(host->dev,
-			"Got data interrupt 0x%08x even though no data operation was in progress.\n",
-			(unsigned)intmask);
-		au6601_reset(host, AU6601_RESET_DATA);
-		return;
-	}
+	if (!host->data)
+		return 0;
 
 	tmp = intmask & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY);
 	switch (tmp)
@@ -985,11 +980,35 @@ static void au6601_data_irq(struct au6601_host *host, u32 intmask)
 		break;
 	}
 
-	if ((intmask & AU6601_INT_DATA_END) || !host->blocks) {
-		au6601_finish_data(host);
-	} else {
-		au6601_trigger_data_transfer(host, 0);
+	if (!host->blocks)
+		return 0;
+
+	au6601_trigger_data_transfer(host, 0);
+	return 1;
+}
+
+static void au6601_data_irq_thread(struct au6601_host *host, u32 intmask)
+{
+	intmask &= AU6601_INT_DATA_MASK;
+
+	if (!intmask)
+		return;
+
+	dev_dbg(host->dev, "DATA thread IRQ %x\n", intmask);
+
+	if (!host->data) {
+		dev_err(host->dev,
+			"Got data interrupt 0x%08x even though no data operation was in progress.\n",
+			(unsigned)intmask);
+		au6601_reset(host, AU6601_RESET_DATA);
+		return;
 	}
+
+	if (au6601_data_irq_done(host, intmask))
+		return;
+
+	if ((intmask & AU6601_INT_DATA_END) || !host->blocks)
+		au6601_finish_data(host);
 }
 
 static void au6601_cd_irq(struct au6601_host *host, u32 intmask)
@@ -1041,7 +1060,7 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 			au6601_err_irq(host, tmp);
 		else {
 			au6601_cmd_irq(host, tmp);
-			au6601_data_irq(host, tmp);
+			au6601_data_irq_thread(host, tmp);
 		}
 		intmask &= ~(AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK);
 	}
@@ -1071,11 +1090,20 @@ exit:
 static irqreturn_t au6601_irq(int irq, void *d)
 {
 	struct au6601_host *host = d;
-	u32 status;
+	u32 status, tmp;
 
 	status = au6601_read32(host, AU6601_REG_INT_STATUS);
 	if (!status)
 		return IRQ_NONE;
+
+
+	tmp = status & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY
+			| AU6601_INT_DATA_END | AU6601_INT_DMA_END );
+	if (tmp == status) {
+		/* use fast path for simple tasks */
+		if (au6601_data_irq_done(host, tmp))
+			return IRQ_HANDLED;
+	}
 
 	host->irq_status_sd = status;
 	au6601_write32(host, status, AU6601_REG_INT_STATUS);
