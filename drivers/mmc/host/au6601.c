@@ -681,8 +681,7 @@ static void au6601_data_set_dma(struct au6601_host *host)
 		return;
 }
 
-static void au6601_trigger_data_transfer(struct au6601_host *host,
-		unsigned int dma)
+static void au6601_trigger_data_transfer(struct au6601_host *host)
 {
 	struct mmc_data *data = host->data;
 	u8 ctrl = 0;
@@ -692,7 +691,7 @@ static void au6601_trigger_data_transfer(struct au6601_host *host,
 	if (data->flags & MMC_DATA_WRITE)
 		ctrl |= AU6601_DATA_WRITE;
 
-	if (dma) {
+	if (data->host_cookie == COOKIE_MAPPED) {
 		au6601_data_set_dma(host);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
@@ -748,43 +747,6 @@ static void au6601_trf_block_pio(struct au6601_host *host, bool read)
 		iowrite32_rep(host->iobase + AU6601_REG_BUFFER, buf, len >> 2);
 
 	sg_miter_stop(&host->sg_miter);
-}
-
-static void au6601_finish_command(struct au6601_host *host)
-{
-	struct mmc_command *cmd = host->cmd;
-
-	dev_dbg(host->dev, "Finish CMD\n");
-
-	if (host->cmd->flags & MMC_RSP_PRESENT) {
-		cmd->resp[0] = au6601_read32be(host, AU6601_REG_CMD_RSP0);
-		dev_dbg(host->dev, "RSP0: 0x%04x\n", cmd->resp[0]);
-		if (host->cmd->flags & MMC_RSP_136) {
-			cmd->resp[1] =
-				au6601_read32be(host, AU6601_REG_CMD_RSP1);
-			cmd->resp[2] =
-				au6601_read32be(host, AU6601_REG_CMD_RSP2);
-			cmd->resp[3] =
-				au6601_read32be(host, AU6601_REG_CMD_RSP3);
-			dev_dbg(host->dev, "RSP1,2,3: 0x%04x 0x%04x 0x%04x\n",
-				cmd->resp[1], cmd->resp[2], cmd->resp[3]);
-		}
-
-	}
-
-	host->cmd->error = 0;
-
-	if (host->cmd == host->mrq->sbc) {
-		dev_info(host->dev, "Finished CMD23, now send actual command.\n");
-		host->cmd = NULL;
-		au6601_send_cmd(host, host->mrq->cmd);
-		return;
-	}
-
-	/* Processed actual command. */
-	if (!host->data)
-		au6601_request_complete(host, 1);
-	host->cmd = NULL;
 }
 
 static void au6601_finish_data(struct au6601_host *host)
@@ -866,7 +828,8 @@ static void au6601_prepare_data(struct au6601_host *host,
 	else
 		au6601_prepare_sg_miter(host);
 
-	au6601_trigger_data_transfer(host, dma);
+	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
+//	au6601_trigger_data_transfer(host, dma);
 }
 
 static void au6601_send_cmd(struct au6601_host *host,
@@ -953,41 +916,71 @@ static void au6601_err_irq(struct au6601_host *host, u32 intmask)
 	au6601_request_complete(host, 1);
 }
 
-static void au6601_cmd_irq(struct au6601_host *host, u32 intmask)
+static int au6601_cmd_irq_done(struct au6601_host *host, u32 intmask)
 {
-	intmask &= AU6601_INT_CMD_MASK;
+	intmask &= AU6601_INT_CMD_END;
+
+	if (!intmask)
+		return true;
+
+	/* got CMD_END but no CMD is in progress, wake thread an process the
+	 * error
+	 */
+	if (!host->cmd)
+		return false;
+
+	dev_dbg(host->dev, "%s %x\n", __func__, intmask);
+
+	if (host->cmd->flags & MMC_RSP_PRESENT) {
+		struct mmc_command *cmd = host->cmd;
+
+		cmd->resp[0] = au6601_read32be(host, AU6601_REG_CMD_RSP0);
+		dev_dbg(host->dev, "RSP0: 0x%04x\n", cmd->resp[0]);
+		if (host->cmd->flags & MMC_RSP_136) {
+			cmd->resp[1] =
+				au6601_read32be(host, AU6601_REG_CMD_RSP1);
+			cmd->resp[2] =
+				au6601_read32be(host, AU6601_REG_CMD_RSP2);
+			cmd->resp[3] =
+				au6601_read32be(host, AU6601_REG_CMD_RSP3);
+			dev_dbg(host->dev, "RSP1,2,3: 0x%04x 0x%04x 0x%04x\n",
+				cmd->resp[1], cmd->resp[2], cmd->resp[3]);
+		}
+
+	}
+
+	host->cmd->error = 0;
+
+	/* Processed actual command. */
+	if (!host->data)
+		return false;
+
+	au6601_trigger_data_transfer(host);
+	host->cmd = NULL;
+	return true;
+}
+
+static void au6601_cmd_irq_thread(struct au6601_host *host, u32 intmask)
+{
+	intmask &= AU6601_INT_CMD_END;
 
 	if (!intmask)
 		return;
 
-	dev_dbg(host->dev, "CMD IRQ %x\n", intmask);
-
-	if (!host->cmd) {
+	if (!host->cmd && intmask & AU6601_INT_CMD_END) {
 		dev_err(host->dev,
 			"Got command interrupt 0x%08x even though no command operation was in progress.\n",
 			intmask);
-		return;
 	}
 
-	/*
-	 * The host can send and interrupt when the busy state has
-	 * ended, allowing us to wait without wasting CPU cycles.
-	 * Unfortunately this is overloaded on the "data complete"
-	 * interrupt, so we need to take some care when handling
-	 * it.
-	 *
-	 * Note: The 1.0 specification is a bit ambiguous about this
-	 *       feature so there might be some problems with older
-	 *       controllers.
-	 */
-	if (host->cmd->flags & MMC_RSP_BUSY) {
-		if (host->cmd->data)
-			dev_warn(host->dev,
-				 "Cannot wait for busy signal when also doing a data transfer");
-	}
+	dev_dbg(host->dev, "%s %x\n", __func__, intmask);
 
-	if (intmask & AU6601_INT_CMD_END)
-		au6601_finish_command(host);
+	/* Processed actual command. */
+	if (!host->data)
+		au6601_request_complete(host, 1);
+	else
+		au6601_trigger_data_transfer(host);
+	host->cmd = NULL;
 }
 
 static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
@@ -1022,13 +1015,15 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 		au6601_trf_block_pio(host, true);
 		if (!host->blocks)
 			return 0;
-		au6601_trigger_data_transfer(host, 0);
+		au6601_trigger_data_transfer(host);
+		return 1;
 		break;
 	case AU6601_INT_WRITE_BUF_RDY:
 		au6601_trf_block_pio(host, false);
 		if (!host->blocks)
 			return 0;
-		au6601_trigger_data_transfer(host, 0);
+		au6601_trigger_data_transfer(host);
+		return 1;
 		break;
 	case AU6601_INT_DMA_END:
 		if (!host->sg_count)
@@ -1040,6 +1035,9 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 		break;
 	}
 
+	/* FIXME: why we get DATA END, even if we still have data and able to
+	 * process it?
+	 */
 	if (intmask & AU6601_INT_DATA_END)
 		return 0;
 
@@ -1119,7 +1117,7 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 		if (tmp & AU6601_INT_ERROR_MASK)
 			au6601_err_irq(host, tmp);
 		else {
-			au6601_cmd_irq(host, tmp);
+			au6601_cmd_irq_thread(host, tmp);
 			au6601_data_irq_thread(host, tmp);
 		}
 		intmask &= ~(AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK);
@@ -1152,25 +1150,29 @@ static irqreturn_t au6601_irq(int irq, void *d)
 	struct au6601_host *host = d;
 	u32 status, tmp;
 	irqreturn_t ret;
+	int cmd_done, data_done;
 
 	status = au6601_read32(host, AU6601_REG_INT_STATUS);
 	if (!status)
 		return IRQ_NONE;
 
 	spin_lock(&host->lock);
+	au6601_write32(host, status, AU6601_REG_INT_STATUS);
 
 	tmp = status & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY
-			| AU6601_INT_DATA_END | AU6601_INT_DMA_END );
+			| AU6601_INT_DATA_END | AU6601_INT_DMA_END
+			| AU6601_INT_CMD_END);
 	if (tmp == status) {
+		cmd_done = au6601_cmd_irq_done(host, tmp);
+		data_done = au6601_data_irq_done(host, tmp);
 		/* use fast path for simple tasks */
-		if (au6601_data_irq_done(host, tmp)) {
+		if (cmd_done && data_done) {
 			ret = IRQ_HANDLED;
 			goto au6601_irq_done;
 		}
 	}
 
 	host->irq_status_sd = status;
-	au6601_write32(host, status, AU6601_REG_INT_STATUS);
 	ret = IRQ_WAKE_THREAD;
 	au6601_mask_sd_irqs(host);
 au6601_irq_done:
