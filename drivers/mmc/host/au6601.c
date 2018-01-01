@@ -277,6 +277,12 @@
 #define AU6601_MS_INT_TPC_MASK			0x003d8002
 #define AU6601_MS_INT_TPC_ERROR			0x003d0000
 
+enum au6601_cookie {
+	COOKIE_UNMAPPED,
+	COOKIE_PRE_MAPPED,	/* mapped by pre_req() of dwmmc */
+	COOKIE_MAPPED,		/* mapped by prepare_data() of dwmmc */
+};
+
 struct au6601_dev_cfg {
 	u32	flags;
 	u8	dma;
@@ -302,15 +308,17 @@ struct au6601_host {
 	struct mmc_command *cmd;
 	struct mmc_data *data;
 	unsigned int dma_on:1;
+	bool use_dma;
 
 	struct mutex cmd_mutex;
+	spinlock_t	lock;
 
 	struct delayed_work timeout_work;
 
 	struct sg_mapping_iter sg_miter;	/* SG state for PIO */
+	struct scatterlist *sg;
 	unsigned int blocks;		/* remaining PIO blocks */
-	unsigned int requested_blocks;		/* count of requested */
-	int sg_count;	   /* Mapped sg entries */
+	int sg_count;
 
 	u32			irq_status_sd;
 	struct au6601_dev_cfg	*cfg;
@@ -647,33 +655,50 @@ static void au6601_reset(struct au6601_host *host, u8 val)
 	dev_err(host->dev, "%s: timeout\n", __func__);
 }
 
+static void au6601_data_set_dma(struct au6601_host *host)
+{
+	struct mmc_data *data = host->data;
+	u32 addr, len;
+
+	if (!host->sg_count)
+		return;
+
+	if (!host->sg) {
+		dev_err(host->dev, "have blocks, but no SG\n");
+		return;
+	}
+	dev_dbg(host->dev, "%s\n", __func__);
+
+	addr = (u32)sg_dma_address(host->sg);
+	len = sg_dma_len(host->sg);
+
+	au6601_write32(host, addr, AU6601_REG_SDMA_ADDR);
+	au6601_write32(host, len, AU6601_REG_BLOCK_SIZE);
+	host->sg = sg_next(host->sg);
+	host->sg_count--;
+
+	if (data->flags & MMC_DATA_WRITE)
+		return;
+}
+
 static void au6601_trigger_data_transfer(struct au6601_host *host,
 		unsigned int dma)
 {
 	struct mmc_data *data = host->data;
 	u8 ctrl = 0;
 
+	dev_dbg(host->dev, "%s\n", __func__);
+
 	if (data->flags & MMC_DATA_WRITE)
 		ctrl |= AU6601_DATA_WRITE;
 
 	if (dma) {
-		au6601_write32(host, host->phys_base, AU6601_REG_SDMA_ADDR);
+		au6601_data_set_dma(host);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
+	} else
+		au6601_write32(host, data->blksz, AU6601_REG_BLOCK_SIZE);
 
-		if (data->flags & MMC_DATA_WRITE)
-			goto done;
-		/* prepare first DMA buffer for write operation */
-		if (host->blocks > AU6601_MAX_DMA_BLOCKS)
-			host->requested_blocks = AU6601_MAX_DMA_BLOCKS;
-		else
-			host->requested_blocks = host->blocks;
-
-	}
-
-done:
-	au6601_write32(host, data->blksz * host->requested_blocks,
-		AU6601_REG_BLOCK_SIZE);
 	au6601_write8(host, ctrl | AU6601_DATA_START_XFER, AU6601_DATA_XFER_CTRL);
 }
 
@@ -690,6 +715,12 @@ static void au6601_trf_block_pio(struct au6601_host *host, bool read)
 
 	if (!host->blocks)
 		return;
+	dev_dbg(host->dev, "%s\n", __func__);
+
+	if (host->dma_on) {
+		dev_err(host->dev, "configured DMA but got PIO request.\n");
+		return;
+	}
 
 	if (!!(host->data->flags & MMC_DATA_READ) != read) {
 		dev_err(host->dev, "got unexpected direction %i != %i\n",
@@ -699,14 +730,14 @@ static void au6601_trf_block_pio(struct au6601_host *host, bool read)
 	if (!sg_miter_next(&host->sg_miter))
 		return;
 
-	blksize = host->data->blksz * host->requested_blocks;
+	blksize = host->data->blksz;
 	len = min(host->sg_miter.length, blksize);
 
 	dev_dbg(host->dev, "PIO, %s block size: 0x%lx\n",
 		read ? "read" : "write", blksize);
 
 	host->sg_miter.consumed = len;
-	host->blocks -= host->requested_blocks;
+	host->blocks--;
 
 	buf = host->sg_miter.addr;
 
@@ -794,6 +825,8 @@ static void au6601_finish_data(struct au6601_host *host)
 		}
 		au6601_send_cmd(host, data->stop);
 	}
+
+	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 	au6601_request_complete(host, 1);
 }
 
@@ -813,20 +846,26 @@ static void au6601_prepare_data(struct au6601_host *host,
 				struct mmc_command *cmd)
 {
 	struct mmc_data *data = cmd->data;
+	bool dma = false;
 
 	if (!data)
 		return;
 
-	dev_dbg(host->dev, "prepare DATA\n");
 
 	host->data = data;
 	host->data->bytes_xfered = 0;
-	host->requested_blocks = 1;
-
-	au6601_prepare_sg_miter(host);
 	host->blocks = data->blocks;
+	host->sg = data->sg;
+	host->sg_count = data->sg_count;
+	dev_dbg(host->dev, "prepare DATA: sg %i, blocks: %i\n",
+		host->sg_count, host->blocks);
 
-	au6601_trigger_data_transfer(host, 0);
+	if (data->host_cookie == COOKIE_MAPPED)
+		dma = true;
+	else
+		au6601_prepare_sg_miter(host);
+
+	au6601_trigger_data_transfer(host, dma);
 }
 
 static void au6601_send_cmd(struct au6601_host *host,
@@ -964,26 +1003,37 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 	if (!host->data)
 		return 0;
 
-	tmp = intmask & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY);
+	tmp = intmask & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY
+			 | AU6601_INT_DMA_END);
 	switch (tmp)
 	{
 	case 0:
 		break;
 	case AU6601_INT_READ_BUF_RDY:
 		au6601_trf_block_pio(host, true);
+		if (!host->blocks)
+			return 0;
+		au6601_trigger_data_transfer(host, 0);
 		break;
 	case AU6601_INT_WRITE_BUF_RDY:
 		au6601_trf_block_pio(host, false);
+		if (!host->blocks)
+			return 0;
+		au6601_trigger_data_transfer(host, 0);
+		break;
+	case AU6601_INT_DMA_END:
+		if (!host->sg_count)
+			return 0;
+		au6601_data_set_dma(host);
 		break;
 	default:
 		dev_err(host->dev, "Got READ_BUF_RDY and WRITE_BUF_RDY at same time\n");
 		break;
 	}
 
-	if (!host->blocks)
+	if (intmask & AU6601_INT_DATA_END)
 		return 0;
 
-	au6601_trigger_data_transfer(host, 0);
 	return 1;
 }
 
@@ -1007,7 +1057,8 @@ static void au6601_data_irq_thread(struct au6601_host *host, u32 intmask)
 	if (au6601_data_irq_done(host, intmask))
 		return;
 
-	if ((intmask & AU6601_INT_DATA_END) || !host->blocks)
+	if ((intmask & AU6601_INT_DATA_END) || !host->blocks ||
+	    (host->dma_on && !host->sg_count))
 		au6601_finish_data(host);
 }
 
@@ -1091,24 +1142,30 @@ static irqreturn_t au6601_irq(int irq, void *d)
 {
 	struct au6601_host *host = d;
 	u32 status, tmp;
+	irqreturn_t ret;
 
 	status = au6601_read32(host, AU6601_REG_INT_STATUS);
 	if (!status)
 		return IRQ_NONE;
 
+	spin_lock(&host->lock);
 
 	tmp = status & (AU6601_INT_READ_BUF_RDY | AU6601_INT_WRITE_BUF_RDY
 			| AU6601_INT_DATA_END | AU6601_INT_DMA_END );
 	if (tmp == status) {
 		/* use fast path for simple tasks */
-		if (au6601_data_irq_done(host, tmp))
-			return IRQ_HANDLED;
+		if (au6601_data_irq_done(host, tmp)) {
+			ret = IRQ_HANDLED;
+			goto au6601_irq_done;
+		}
 	}
 
 	host->irq_status_sd = status;
 	au6601_write32(host, status, AU6601_REG_INT_STATUS);
-	au6601_mask_sd_irqs(host);
-	return IRQ_WAKE_THREAD;
+	ret = IRQ_WAKE_THREAD;
+au6601_irq_done:
+	spin_unlock(&host->lock);
+	return ret;
 }
 
 #if 0
@@ -1333,16 +1390,27 @@ static void au6601_request(struct mmc_host *mmc, struct mmc_request *mrq)
 static void au6601_pre_req(struct mmc_host *mmc,
 			   struct mmc_request *mrq)
 {
-#if 0
-	struct dw_mci_slot *slot = mmc_priv(mmc);
+	struct au6601_host *host = mmc_priv(mmc);
 	struct mmc_data *data = mrq->data;
+	struct mmc_command *cmd = mrq->cmd;
+	int sg_len;
 
-	if (!slot->host->use_dma || !data)
+	if (!host->use_dma || !data || !cmd)
 		return;
 
+	if (cmd->opcode != 18)
+		return;
+
+	dev_dbg(host->dev, "do pre request\n");
 	/* This data might be unmapped at this time */
 	data->host_cookie = COOKIE_UNMAPPED;
 
+	sg_len = dma_map_sg(host->dev, data->sg, data->sg_len,
+			    mmc_get_dma_dir(data));
+	if (sg_len)
+		data->host_cookie = COOKIE_MAPPED;
+	data->sg_count = sg_len;
+#if 0
 	if (dw_mci_pre_dma_transfer(slot->host, mrq->data,
 				COOKIE_PRE_MAPPED) < 0)
 		data->host_cookie = COOKIE_UNMAPPED;
@@ -1353,20 +1421,21 @@ static void au6601_post_req(struct mmc_host *mmc,
 			    struct mmc_request *mrq,
 			    int err)
 {
-#if 0
-	struct dw_mci_slot *slot = mmc_priv(mmc);
+	struct au6601_host *host = mmc_priv(mmc);
 	struct mmc_data *data = mrq->data;
 
-	if (!slot->host->use_dma || !data)
+	if (!host->use_dma || !data)
 		return;
 
+	dev_dbg(host->dev, "do post request\n");
+
 	if (data->host_cookie != COOKIE_UNMAPPED)
-		dma_unmap_sg(slot->host->dev,
+		dma_unmap_sg(host->dev,
 			     data->sg,
 			     data->sg_len,
 			     mmc_get_dma_dir(data));
+
 	data->host_cookie = COOKIE_UNMAPPED;
-#endif
 }
 
 static void au6601_set_power_mode(struct mmc_host *mmc, struct mmc_ios *ios)
@@ -1647,6 +1716,7 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	host->dev = &pdev->dev;
 	host->cfg = cfg;
 	host->cur_power_mode = MMC_POWER_UNDEFINED;
+	host->use_dma = true;
 
 	ret = pci_request_regions(pdev, DRVNAME);
 	if (ret) {
@@ -1688,6 +1758,7 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	pci_set_drvdata(pdev, host);
 	pci_init_check_aspm(host);
 
+	spin_lock_init(&host->lock);
 	mutex_init(&host->cmd_mutex);
 	/*
 	 * Init tasklets.
