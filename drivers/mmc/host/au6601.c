@@ -696,8 +696,9 @@ static void au6601_trigger_data_transfer(struct au6601_host *host,
 		au6601_data_set_dma(host);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
-	} else
+	} else {
 		au6601_write32(host, data->blksz, AU6601_REG_BLOCK_SIZE);
+	}
 
 	au6601_write8(host, ctrl | AU6601_DATA_START_XFER, AU6601_DATA_XFER_CTRL);
 }
@@ -995,11 +996,19 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 
 	intmask &= AU6601_INT_DATA_MASK;
 
+	/* nothing here to do */
 	if (!intmask)
 		return 1;
 
-	dev_dbg(host->dev, "DATA IRQ %x\n", intmask);
+	dev_dbg(host->dev, "%s %x\n", __func__, intmask);
 
+	/* we was too fast and got DATA_END after it was processed?
+	 * lets ignore it for now.
+	 */
+	if (!host->data && intmask == AU6601_INT_DATA_END)
+		return 1;
+
+	/* looks like an error, so lets handle it. */
 	if (!host->data)
 		return 0;
 
@@ -1163,6 +1172,7 @@ static irqreturn_t au6601_irq(int irq, void *d)
 	host->irq_status_sd = status;
 	au6601_write32(host, status, AU6601_REG_INT_STATUS);
 	ret = IRQ_WAKE_THREAD;
+	au6601_mask_sd_irqs(host);
 au6601_irq_done:
 	spin_unlock(&host->lock);
 	return ret;
@@ -1716,7 +1726,7 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	host->dev = &pdev->dev;
 	host->cfg = cfg;
 	host->cur_power_mode = MMC_POWER_UNDEFINED;
-	host->use_dma = true;
+	host->use_dma = false;
 
 	ret = pci_request_regions(pdev, DRVNAME);
 	if (ret) {
