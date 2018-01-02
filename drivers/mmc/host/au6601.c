@@ -695,6 +695,7 @@ static void au6601_trigger_data_transfer(struct au6601_host *host)
 		au6601_data_set_dma(host);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
+		//au6601_write32(host, data->blksz * data->blocks, AU6601_REG_BLOCK_SIZE);
 	} else {
 		au6601_write32(host, data->blksz, AU6601_REG_BLOCK_SIZE);
 	}
@@ -789,7 +790,7 @@ static void au6601_finish_data(struct au6601_host *host)
 		au6601_send_cmd(host, data->stop);
 	}
 
-	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
+//	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 	au6601_request_complete(host, 1);
 }
 
@@ -1026,8 +1027,10 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 		return 1;
 		break;
 	case AU6601_INT_DMA_END:
-		if (!host->sg_count)
+		if (!host->sg_count) {
+			au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 			return 0;
+		}
 		au6601_data_set_dma(host);
 		break;
 	default:
