@@ -669,7 +669,7 @@ static void au6601_data_set_dma(struct au6601_host *host)
 	len = sg_dma_len(host->sg);
 
 	au6601_write32(host, addr, AU6601_REG_SDMA_ADDR);
-	au6601_write32(host, len, AU6601_REG_BLOCK_SIZE);
+//	au6601_write32(host, len, AU6601_REG_BLOCK_SIZE);
 	host->sg = sg_next(host->sg);
 	host->sg_count--;
 
@@ -698,7 +698,7 @@ static void au6601_trigger_data_transfer(struct au6601_host *host, bool early)
 		au6601_data_set_dma(host);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
-		//au6601_write32(host, data->blksz * data->blocks, AU6601_REG_BLOCK_SIZE);
+		au6601_write32(host, AU6601_MAX_DMA_BLOCK_SIZE, AU6601_REG_BLOCK_SIZE);
 	} else {
 		au6601_write32(host, data->blksz, AU6601_REG_BLOCK_SIZE);
 	}
@@ -791,9 +791,10 @@ static void au6601_finish_data(struct au6601_host *host)
 			au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 		}
 		au6601_send_cmd(host, data->stop);
+		msleep(1);
 	}
 
-	au6601_reset(host, AU6601_RESET_DATA);
+	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 	/*
 	 * this DMA engine is triggered only by address change
 	 * Some times we get identical buf address in two
@@ -841,7 +842,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 		au6601_prepare_sg_miter(host);
 
 	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
-	//au6601_trigger_data_transfer(host, true);
+	au6601_trigger_data_transfer(host, true);
 }
 
 static void au6601_send_cmd(struct au6601_host *host,
@@ -1432,10 +1433,6 @@ static void au6601_pre_req(struct mmc_host *mmc,
 	if (cmd->opcode != 18)
 		return;
 
-	/* hmm... it should be CMD18 with args? */
-	if (!cmd->arg)
-		return;
-#if 1
 	/*
 	 * We don't do DMA on "complex" transfers, i.e. with
 	 * non-word-aligned buffers or lengths. Also, we don't bother
@@ -1452,7 +1449,6 @@ static void au6601_pre_req(struct mmc_host *mmc,
 			return;
 	}
 
-#endif
 	dev_dbg(host->dev, "do pre request\n");
 	/* This data might be unmapped at this time */
 
