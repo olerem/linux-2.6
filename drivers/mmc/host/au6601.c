@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2014-2017 Oleksij Rempel <linux@rempel-privat.de>
+ * Copyright (C) 2014-2018 Oleksij Rempel <linux@rempel-privat.de>
  *
  * Direver for Alcor Micro AU6601 and AU6621 controllers
  */
@@ -27,11 +27,12 @@
 #define AU6601_BASE_CLOCK			MHZ_TO_HZ(31)
 #define AU6601_MIN_CLOCK			(150 * 1000)
 #define AU6601_MAX_CLOCK			MHZ_TO_HZ(208)
-#define AU6601_MAX_SEGMENTS			10
-#define AU6601_MAX_BLOCK_SIZE			0x1000
+#define AU6601_MAX_DMA_SEGMENTS			(8 * 8)
+#define AU6601_MAX_PIO_SEGMENTS			1
+#define AU6601_MAX_DMA_BLOCK_SIZE		0x1000
+#define AU6601_MAX_PIO_BLOCK_SIZE		0x200
 #define AU6601_MAX_DMA_BLOCKS			1
 #define AU6601_DMA_LOCAL_SEGMENTS		1
-#define AU6601_MAX_BLOCK_COUNT			AU6601_MAX_SEGMENTS
 
 /* SDMA phy address. Higer then 0x0800.0000? */
 #define AU6601_REG_SDMA_ADDR			0x00
@@ -322,8 +323,6 @@ struct au6601_host {
 	u8  parent_aspm_cap;
 	u8 uExtConfigDevAspm;
 };
-
-static bool disable_dma;
 
 static const struct au6601_pll_conf au6601_pll_cfg[] = {
 	{10,	0x0,	0x1ff,	1},
@@ -781,6 +780,7 @@ static void au6601_finish_data(struct au6601_host *host)
 		au6601_send_cmd(host, data->stop);
 	}
 
+	au6601_reset(host, AU6601_RESET_DATA);
 //	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 	au6601_request_complete(host, 1);
 }
@@ -1020,6 +1020,7 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 	case AU6601_INT_DMA_END:
 		if (!host->sg_count) {
 			au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
+			au6601_reset(host, AU6601_RESET_DATA);
 			return 0;
 		}
 		au6601_data_set_dma(host);
@@ -1399,17 +1400,37 @@ static void au6601_pre_req(struct mmc_host *mmc,
 	struct au6601_host *host = mmc_priv(mmc);
 	struct mmc_data *data = mrq->data;
 	struct mmc_command *cmd = mrq->cmd;
-	int sg_len;
+	struct scatterlist *sg;
+	unsigned int i, sg_len;
 
 	if (!host->use_dma || !data || !cmd)
 		return;
 
+	data->host_cookie = COOKIE_UNMAPPED;
+
 	if (cmd->opcode != 18)
 		return;
 
+#if 0
+	/*
+	 * We don't do DMA on "complex" transfers, i.e. with
+	 * non-word-aligned buffers or lengths. Also, we don't bother
+	 * with all the DMA setup overhead for short transfers.
+	 */
+	if (data->blocks * data->blksz < AU6601_MAX_DMA_BLOCK_SIZE)
+		return;
+
+	if (data->blksz & 3)
+		return;
+
+	for_each_sg(data->sg, sg, data->sg_len, i) {
+		if (sg->offset & 3 || sg->length != AU6601_MAX_DMA_BLOCK_SIZE)
+			return;
+	}
+
+#endif
 	dev_dbg(host->dev, "do pre request\n");
 	/* This data might be unmapped at this time */
-	data->host_cookie = COOKIE_UNMAPPED;
 
 	sg_len = dma_map_sg(host->dev, data->sg, data->sg_len,
 			    mmc_get_dma_dir(data));
@@ -1622,11 +1643,13 @@ static void au6601_init_mmc(struct au6601_host *host)
 	mmc->ops = &au6601_sdc_ops;
 
 	/* Hardware cannot do scatter lists */
-	mmc->max_segs = AU6601_MAX_SEGMENTS;
-	mmc->max_seg_size = AU6601_MAX_BLOCK_SIZE;
+	mmc->max_segs = host->use_dma ? AU6601_MAX_DMA_SEGMENTS
+		: AU6601_MAX_PIO_SEGMENTS;
+	mmc->max_seg_size = host->use_dma ? AU6601_MAX_DMA_BLOCK_SIZE
+		: AU6601_MAX_PIO_BLOCK_SIZE;
 
-	mmc->max_blk_size = AU6601_MAX_BLOCK_SIZE;
-	mmc->max_blk_count = AU6601_MAX_BLOCK_COUNT;
+	mmc->max_blk_size = mmc->max_seg_size;
+	mmc->max_blk_count = mmc->max_segs;
 
 	mmc->max_req_size = mmc->max_seg_size * mmc->max_segs;
 }
@@ -1680,7 +1703,7 @@ static int au6601_dma_alloc(struct au6601_host *host)
 	}
 
 	host->virt_base = dmam_alloc_coherent(host->dev,
-		AU6601_MAX_BLOCK_SIZE * AU6601_MAX_DMA_BLOCKS
+		AU6601_MAX_DMA_BLOCK_SIZE * AU6601_MAX_DMA_BLOCKS
 		* AU6601_DMA_LOCAL_SEGMENTS,
 		&host->phys_base, GFP_KERNEL);
 
@@ -1853,9 +1876,6 @@ static struct pci_driver au6601_driver = {
 };
 
 module_pci_driver(au6601_driver);
-
-module_param(disable_dma, bool, S_IRUGO);
-MODULE_PARM_DESC(disable_dma, "Disable DMA");
 
 MODULE_AUTHOR("Oleksij Rempel <linux@rempel-privat.de>");
 MODULE_DESCRIPTION("PCI driver for Alcor Micro AU6601 Secure Digital Host Controller Interface");
