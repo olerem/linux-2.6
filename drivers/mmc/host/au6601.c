@@ -34,7 +34,12 @@
 #define AU6601_MAX_DMA_BLOCKS			1
 #define AU6601_DMA_LOCAL_SEGMENTS		1
 
-/* SDMA phy address. Higer then 0x0800.0000? */
+/* SDMA phy address. Higer then 0x0800.0000?
+ * The au6601 and au6621 have different DMA engines with different issues. One
+ * For example au6621 engine is triggered by addr change. No other interaction
+ * is needed. This means, if we get two buffers with same address, then engine
+ * will stall.
+ */
 #define AU6601_REG_SDMA_ADDR			0x00
 #define AU6601_SDMA_MASK			0xffff0000
 
@@ -292,8 +297,8 @@ struct au6601_host {
 	struct pci_dev *parent_pdev;
 	struct  device *dev;
 	void __iomem *iobase;
-	void __iomem *virt_base;
-	dma_addr_t phys_base;
+	void __iomem *dma_trap_virt;
+	dma_addr_t dma_trap_phys;
 
 	struct mmc_host *mmc;
 	struct mmc_request *mrq;
@@ -789,6 +794,13 @@ static void au6601_finish_data(struct au6601_host *host)
 	}
 
 	au6601_reset(host, AU6601_RESET_DATA);
+	/*
+	 * this DMA engine is triggered only by address change
+	 * Some times we get identical buf address in two
+	 * following transfers. So we set own trap addr at the
+	 * end of transfer to make sure the address is different.
+	 */
+	au6601_write32(host, host->dma_trap_phys, AU6601_REG_SDMA_ADDR);
 //	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 	au6601_request_complete(host, 1);
 }
@@ -829,7 +841,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 		au6601_prepare_sg_miter(host);
 
 	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
-	au6601_trigger_data_transfer(host, true);
+	//au6601_trigger_data_transfer(host, true);
 }
 
 static void au6601_send_cmd(struct au6601_host *host,
@@ -935,6 +947,7 @@ static int au6601_cmd_irq_done(struct au6601_host *host, u32 intmask)
 		struct mmc_command *cmd = host->cmd;
 
 		cmd->resp[0] = au6601_read32be(host, AU6601_REG_CMD_RSP0);
+		/* TODO should we check card status here? */
 		dev_dbg(host->dev, "RSP0: 0x%04x\n", cmd->resp[0]);
 		if (host->cmd->flags & MMC_RSP_136) {
 			cmd->resp[1] =
@@ -1682,7 +1695,7 @@ static void au6601_hw_init(struct au6601_host *host)
 	au6601_write8(host, AU6601_BUS_WIDTH_1BIT, AU6601_REG_BUS_CTRL);
 	//au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 
-#if 0
+#if 1
 	au6601_write8(host, 0x44, AU6601_PAD_DRIVE0);
 	au6601_write8(host, 0x44, AU6601_PAD_DRIVE1);
 	au6601_write8(host, 0x00, AU6601_PAD_DRIVE2);
@@ -1718,12 +1731,11 @@ static int au6601_dma_alloc(struct au6601_host *host)
 		return ret;
 	}
 
-	host->virt_base = dmam_alloc_coherent(host->dev,
-		AU6601_MAX_DMA_BLOCK_SIZE * AU6601_MAX_DMA_BLOCKS
-		* AU6601_DMA_LOCAL_SEGMENTS,
-		&host->phys_base, GFP_KERNEL);
+	host->dma_trap_virt = dmam_alloc_coherent(host->dev,
+		AU6601_MAX_DMA_BLOCK_SIZE,
+		&host->dma_trap_phys, GFP_KERNEL);
 
-	if (!host->virt_base) {
+	if (!host->dma_trap_virt) {
 		dev_err(host->dev, "Failed to alloc DMA\n");
 		return -ENOMEM;
 	}
