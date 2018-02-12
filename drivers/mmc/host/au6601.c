@@ -36,7 +36,7 @@
 
 /* SDMA phy address. Higer then 0x0800.0000? */
 #define AU6601_REG_SDMA_ADDR			0x00
-#define AU6601_SDMA_MASK			0xfffffe00
+#define AU6601_SDMA_MASK			0xffff0000
 
 #define AU6601_DMA_BOUNDARY			0x05
 #define AU6621_DMA_PAGE_CNT			0x05
@@ -300,6 +300,7 @@ struct au6601_host {
 	struct mmc_command *cmd;
 	struct mmc_data *data;
 	unsigned int dma_on:1;
+	unsigned int early_data:1;
 	bool use_dma;
 
 	struct mutex cmd_mutex;
@@ -671,7 +672,7 @@ static void au6601_data_set_dma(struct au6601_host *host)
 		return;
 }
 
-static void au6601_trigger_data_transfer(struct au6601_host *host)
+static void au6601_trigger_data_transfer(struct au6601_host *host, bool early)
 {
 	struct mmc_data *data = host->data;
 	u8 ctrl = 0;
@@ -682,6 +683,13 @@ static void au6601_trigger_data_transfer(struct au6601_host *host)
 		ctrl |= AU6601_DATA_WRITE;
 
 	if (data->host_cookie == COOKIE_MAPPED) {
+		if (host->early_data) {
+			host->early_data = false;
+			return;
+		}
+
+		host->early_data = early;
+
 		au6601_data_set_dma(host);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
@@ -821,7 +829,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 		au6601_prepare_sg_miter(host);
 
 	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
-//	au6601_trigger_data_transfer(host, dma);
+	au6601_trigger_data_transfer(host, true);
 }
 
 static void au6601_send_cmd(struct au6601_host *host,
@@ -947,7 +955,7 @@ static int au6601_cmd_irq_done(struct au6601_host *host, u32 intmask)
 	if (!host->data)
 		return false;
 
-	au6601_trigger_data_transfer(host);
+	au6601_trigger_data_transfer(host, false);
 	host->cmd = NULL;
 	return true;
 }
@@ -971,7 +979,7 @@ static void au6601_cmd_irq_thread(struct au6601_host *host, u32 intmask)
 	if (!host->data)
 		au6601_request_complete(host, 1);
 	else
-		au6601_trigger_data_transfer(host);
+		au6601_trigger_data_transfer(host, false);
 	host->cmd = NULL;
 }
 
@@ -1007,14 +1015,14 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 		au6601_trf_block_pio(host, true);
 		if (!host->blocks)
 			return 0;
-		au6601_trigger_data_transfer(host);
+		au6601_trigger_data_transfer(host, false);
 		return 1;
 		break;
 	case AU6601_INT_WRITE_BUF_RDY:
 		au6601_trf_block_pio(host, false);
 		if (!host->blocks)
 			return 0;
-		au6601_trigger_data_transfer(host);
+		au6601_trigger_data_transfer(host, false);
 		return 1;
 		break;
 	case AU6601_INT_DMA_END:
@@ -1411,7 +1419,10 @@ static void au6601_pre_req(struct mmc_host *mmc,
 	if (cmd->opcode != 18)
 		return;
 
-#if 0
+	/* hmm... it should be CMD18 with args? */
+	if (!cmd->arg)
+		return;
+#if 1
 	/*
 	 * We don't do DMA on "complex" transfers, i.e. with
 	 * non-word-aligned buffers or lengths. Also, we don't bother
@@ -1434,14 +1445,14 @@ static void au6601_pre_req(struct mmc_host *mmc,
 
 	sg_len = dma_map_sg(host->dev, data->sg, data->sg_len,
 			    mmc_get_dma_dir(data));
-	if (sg_len)
+	if (sg_len) {
+		if (data->flags & MMC_DATA_WRITE)
+			dma_sync_sg_for_device(host->dev, data->sg,
+					       data->sg_len,
+					       mmc_get_dma_dir(data));
 		data->host_cookie = COOKIE_MAPPED;
+	}
 	data->sg_count = sg_len;
-#if 0
-	if (dw_mci_pre_dma_transfer(slot->host, mrq->data,
-				COOKIE_PRE_MAPPED) < 0)
-		data->host_cookie = COOKIE_UNMAPPED;
-#endif
 }
 
 static void au6601_post_req(struct mmc_host *mmc,
@@ -1456,11 +1467,16 @@ static void au6601_post_req(struct mmc_host *mmc,
 
 	dev_dbg(host->dev, "do post request\n");
 
-	if (data->host_cookie != COOKIE_UNMAPPED)
+	if (data->host_cookie != COOKIE_UNMAPPED) {
+		if (!(data->flags & MMC_DATA_WRITE))
+			dma_sync_sg_for_cpu(host->dev, data->sg,
+					    data->sg_len,
+					    mmc_get_dma_dir(data));
 		dma_unmap_sg(host->dev,
 			     data->sg,
 			     data->sg_len,
 			     mmc_get_dma_dir(data));
+	}
 
 	data->host_cookie = COOKIE_UNMAPPED;
 }
@@ -1745,7 +1761,8 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	host->dev = &pdev->dev;
 	host->cfg = cfg;
 	host->cur_power_mode = MMC_POWER_UNDEFINED;
-	host->use_dma = false;
+	//host->use_dma = false;
+	host->use_dma = true;
 
 	ret = pci_request_regions(pdev, DRVNAME);
 	if (ret) {
