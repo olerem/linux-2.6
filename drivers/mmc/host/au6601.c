@@ -286,8 +286,8 @@ struct au6601_dev_cfg {
 };
 
 struct au6601_pll_conf {
-	unsigned int ratio;
-	unsigned int mod;
+	unsigned int clk_src_freq;
+	unsigned int clk_src_reg;
 	unsigned int max_div;
 	unsigned int min_div;
 };
@@ -331,11 +331,11 @@ struct au6601_host {
 };
 
 static const struct au6601_pll_conf au6601_pll_cfg[] = {
-	{10,	0x0,	0x1ff,	1},
-	{15,	0x1,	0x1ff,	1},
-	{40,	0x2,	0xf,	1},
-	{125,	0x3,	0xf,	2},
-	{135,	0xb,	0xf,	2},
+	/* MHZ,		CLK src,		max div, min div */
+	{ 31250000,	AU6601_CLK_31_25_MHZ,	1,	511},
+	{ 48000000,	AU6601_CLK_48_MHZ,	1,	511},
+	{125000000,	AU6601_CLK_125_MHZ,	1,	511},
+	{384000000,	AU6601_CLK_384_MHZ,	1,	511},
 };
 
 static void au6601_send_cmd(struct au6601_host *host,
