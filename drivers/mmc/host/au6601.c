@@ -787,20 +787,13 @@ static void au6601_finish_data(struct au6601_host *host)
 		 * The controller needs a reset of internal state machines
 		 * upon error conditions.
 		 */
-		if (data->error) {
+		if (data->error)
 			au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
-		}
+
 		au6601_send_cmd(host, data->stop);
-		udelay(200);
+		udelay(100);
 	}
 
-	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
-	/*
-	 * this DMA engine is triggered only by address change
-	 * Some times we get identical buf address in two
-	 * following transfers. So we set own trap addr at the
-	 * end of transfer to make sure the address is different.
-	 */
 	au6601_request_complete(host, 1);
 }
 
@@ -910,8 +903,6 @@ static void au6601_err_irq(struct au6601_host *host, u32 intmask)
 			host->cmd->error = -ETIMEDOUT;
 		else
 			host->cmd->error = -EILSEQ;
-
-		au6601_reset(host, AU6601_RESET_CMD);
 	}
 
 	if (host->data) {
@@ -921,7 +912,6 @@ static void au6601_err_irq(struct au6601_host *host, u32 intmask)
 			host->data->error = -EILSEQ;
 
 		host->data->bytes_xfered = 0;
-		au6601_reset(host, AU6601_RESET_DATA);
 	}
 
 	au6601_request_complete(host, 1);
@@ -1590,6 +1580,7 @@ static void au6601_request_complete(struct au6601_host *host,
 {
 	struct mmc_request *mrq;
 
+	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 	/*
 	 * If this tasklet gets rescheduled while running, it will
 	 * be run again afterwards but without any active request.
@@ -1603,17 +1594,6 @@ static void au6601_request_complete(struct au6601_host *host,
 		cancel_delayed_work_sync(&host->timeout_work);
 
 	mrq = host->mrq;
-
-	/*
-	 * The controller needs a reset of internal state machines
-	 * upon error conditions.
-	 */
-	if ((mrq->cmd && mrq->cmd->error) ||
-		 (mrq->data && (mrq->data->error ||
-		  (mrq->data->stop && mrq->data->stop->error)))) {
-
-		au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
-	}
 
 	host->mrq = NULL;
 	host->cmd = NULL;
