@@ -791,7 +791,7 @@ static void au6601_finish_data(struct au6601_host *host)
 			au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 		}
 		au6601_send_cmd(host, data->stop);
-		msleep(1);
+		udelay(200);
 	}
 
 	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
@@ -801,8 +801,6 @@ static void au6601_finish_data(struct au6601_host *host)
 	 * following transfers. So we set own trap addr at the
 	 * end of transfer to make sure the address is different.
 	 */
-	au6601_write32(host, host->dma_trap_phys, AU6601_REG_SDMA_ADDR);
-//	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 	au6601_request_complete(host, 1);
 }
 
