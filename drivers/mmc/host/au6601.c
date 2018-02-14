@@ -327,7 +327,7 @@ struct au6601_host {
 	u8  pdev_aspm_cap;
 	int parent_cap_off;
 	u8  parent_aspm_cap;
-	u8 uExtConfigDevAspm;
+	u8 ext_config_dev_aspm;
 };
 
 static const struct au6601_pll_conf au6601_pll_cfg[] = {
@@ -558,9 +558,9 @@ static int pci_init_check_aspm(struct au6601_host *host)
 		host->parent_aspm_cap = aspm_cap;
 	}
 
-	dev_dbg(host->dev, "uExtConfigDevAspm: %x, host->pdev_aspm_cap: %x\n",
-		host->uExtConfigDevAspm, host->pdev_aspm_cap);
-	host->uExtConfigDevAspm &= host->pdev_aspm_cap;
+	dev_dbg(host->dev, "ext_config_dev_aspm: %x, host->pdev_aspm_cap: %x\n",
+		host->ext_config_dev_aspm, host->pdev_aspm_cap);
+	host->ext_config_dev_aspm &= host->pdev_aspm_cap;
 	return 1;
 }
 
@@ -587,7 +587,7 @@ static void pci_aspm_ctrl(struct au6601_host *host, u8 aspm_enable)
 
 	aspm_ctrl = 0;
 	if (aspm_enable) {
-		aspm_ctrl = host->uExtConfigDevAspm;
+		aspm_ctrl = host->ext_config_dev_aspm;
 
 		if (aspm_ctrl == 0) {
 			dev_dbg(host->dev, "aspm_ctrl == 0\n");
@@ -669,7 +669,6 @@ static void au6601_data_set_dma(struct au6601_host *host)
 	len = sg_dma_len(host->sg);
 
 	au6601_write32(host, addr, AU6601_REG_SDMA_ADDR);
-//	au6601_write32(host, len, AU6601_REG_BLOCK_SIZE);
 	host->sg = sg_next(host->sg);
 	host->sg_count--;
 
@@ -1667,19 +1666,20 @@ static void au6601_hw_init(struct au6601_host *host)
 	au6601_write8(host, AU6601_SD_CARD, AU6601_ACTIVE_CTRL);
 
 	au6601_write8(host, AU6601_BUS_WIDTH_1BIT, AU6601_REG_BUS_CTRL);
-	//au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 
 #if 1
+	/* TODO: actual meaning of this values? How it should be used? */
 	au6601_write8(host, 0x44, AU6601_PAD_DRIVE0);
 	au6601_write8(host, 0x44, AU6601_PAD_DRIVE1);
 	au6601_write8(host, 0x00, AU6601_PAD_DRIVE2);
 
 	/* set default phase value */
+	/* TODO: same here: actual meaning of this values?
+	 * How it should be used? */
 	au6601_write8(host, 0x20, AU6601_CLK_DELAY);
 #endif
 	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
 	au6601_write8(host, cfg->dma, AU6601_DMA_BOUNDARY);
-	//au6601_write8(host, 0, AU6601_OPT);
 
 	au6601_write8(host, 0, AU6601_OUTPUT_ENABLE);
 	au6601_write8(host, 0, AU6601_POWER_CONTROL);
@@ -1693,28 +1693,6 @@ static void au6601_hw_init(struct au6601_host *host)
 	/* currently i don't know how to properly handle MS IRQ
 	 * and HW to test it. */
 	au6601_mask_ms_irqs(host);
-}
-
-static int au6601_dma_alloc(struct au6601_host *host)
-{
-	int ret;
-
-	ret = pci_set_dma_mask(host->pdev, AU6601_SDMA_MASK);
-	if (ret) {
-		dev_err(host->dev, "Failed to set DMA mask\n");
-		return ret;
-	}
-
-	host->dma_trap_virt = dmam_alloc_coherent(host->dev,
-		AU6601_MAX_DMA_BLOCK_SIZE,
-		&host->dma_trap_phys, GFP_KERNEL);
-
-	if (!host->dma_trap_virt) {
-		dev_err(host->dev, "Failed to alloc DMA\n");
-		return -ENOMEM;
-	}
-
-	return 0;
 }
 
 static int au6601_pci_probe(struct pci_dev *pdev,
@@ -1782,9 +1760,11 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 		goto error_release_regions;
 	}
 
-	ret = au6601_dma_alloc(host);
-	if (ret)
+	ret = pci_set_dma_mask(host->pdev, AU6601_SDMA_MASK);
+	if (ret) {
+		dev_err(host->dev, "Failed to set DMA mask\n");
 		goto error_release_regions;
+	}
 
 	pci_set_master(pdev);
 	pci_set_drvdata(pdev, host);
