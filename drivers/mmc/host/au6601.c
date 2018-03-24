@@ -1417,10 +1417,10 @@ static void au6601_pre_req(struct mmc_host *mmc,
 
 	data->host_cookie = COOKIE_UNMAPPED;
 
-	if (cmd->opcode != 18)
-		return;
-
-	if (!cmd->arg)
+	/* TODO: need explanation :_(
+	 * allow only CMD18 + non zero args. In other case DMA silently fails.
+	 */
+	if (!(cmd->opcode == 18 && cmd->arg))
 		return;
 	/*
 	 * We don't do DMA on "complex" transfers, i.e. with
