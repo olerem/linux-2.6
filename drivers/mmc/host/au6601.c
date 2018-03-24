@@ -1420,6 +1420,8 @@ static void au6601_pre_req(struct mmc_host *mmc,
 	if (cmd->opcode != 18)
 		return;
 
+	if (!cmd->arg)
+		return;
 	/*
 	 * We don't do DMA on "complex" transfers, i.e. with
 	 * non-word-aligned buffers or lengths. Also, we don't bother
