@@ -288,8 +288,8 @@ struct au6601_dev_cfg {
 struct au6601_pll_conf {
 	unsigned int clk_src_freq;
 	unsigned int clk_src_reg;
-	unsigned int max_div;
 	unsigned int min_div;
+	unsigned int max_div;
 };
 
 struct au6601_host {
@@ -697,12 +697,14 @@ static void au6601_trigger_data_transfer(struct au6601_host *host, bool early)
 		au6601_data_set_dma(host);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
-		au6601_write32(host, AU6601_MAX_DMA_BLOCK_SIZE, AU6601_REG_BLOCK_SIZE);
+		au6601_write32(host, AU6601_MAX_DMA_BLOCK_SIZE,
+			       AU6601_REG_BLOCK_SIZE);
 	} else {
 		au6601_write32(host, data->blksz, AU6601_REG_BLOCK_SIZE);
 	}
 
-	au6601_write8(host, ctrl | AU6601_DATA_START_XFER, AU6601_DATA_XFER_CTRL);
+	au6601_write8(host, ctrl | AU6601_DATA_START_XFER,
+		      AU6601_DATA_XFER_CTRL);
 }
 
 /*****************************************************************************\
@@ -812,7 +814,6 @@ static void au6601_prepare_data(struct au6601_host *host,
 				struct mmc_command *cmd)
 {
 	struct mmc_data *data = cmd->data;
-	bool dma = false;
 
 	if (!data)
 		return;
@@ -826,9 +827,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 	dev_dbg(host->dev, "prepare DATA: sg %i, blocks: %i\n",
 		host->sg_count, host->blocks);
 
-	if (data->host_cookie == COOKIE_MAPPED)
-		dma = true;
-	else
+	if (data->host_cookie != COOKIE_MAPPED)
 		au6601_prepare_sg_miter(host);
 
 	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
@@ -1184,150 +1183,47 @@ au6601_irq_done:
 	return ret;
 }
 
-#if 0
-static unsigned int au6601_calc_div(unsigned int clock, unsigned int clock_mod,
-		 const struct au6601_pll_conf *cfg)
-{
-	unsigned int tmp;
-
-	tmp = DIV_ROUND_UP(clock_mod, clock);
-	if (tmp > cfg->max_div)
-		tmp = cfg->max_div;
-	else if (tmp < cfg->min_div)
-		tmp = cfg->min_div;
-
-	return tmp;
-}
-
 static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 {
-	unsigned int clock_out = 0, div = 0, mod = 0, ctrl = AU6601_PLL_EN;
-	//int i, diff = MAX_INT;
-	int i, diff = 0x7fffffff;
+	unsigned int clock_out = 0;
+	int i, diff = 0x7fffffff, tmp_clock = 0;
+	u16 clk_src = 0;
+	u8 clk_div = 0;
 
 	if (clock == 0) {
-		ctrl &= ~AU6601_PLL_EN;
-		goto done;
-	}
-
-	for (i = 0; i < ARRAY_SIZE(au6601_pll_cfg); i++) {
-		int tmp_diff, tmp_clock, tmp_div, tmp_clock_mult;
-		const struct au6601_pll_conf *cfg = &au6601_pll_cfg[i];
-
-		tmp_clock_mult = cfg->ratio * (AU6601_BASE_CLOCK / 10);
-		tmp_div = au6601_calc_div(clock, tmp_clock_mult, cfg);
-		tmp_clock = DIV_ROUND_UP(tmp_clock_mult, tmp_div);
-		tmp_diff = clock - tmp_clock;
-
-		if (tmp_diff >= 0 && tmp_diff < diff) {
-			diff = tmp_diff;
-			mod = cfg->mod;
-			div = tmp_div;
-			clock_out = tmp_clock;
-		}
-	}
-
-done:
-	dev_dbg(host->dev, "set freq %d, use freq %d, %d, %x\n",
-		clock, clock_out, div, mod);
-
-	au6601_write16(host, (div - 1) << AU6601_PLL_DIV_S
-		  | mod << AU6601_PLL_MOD_S | ctrl,
-		  AU6601_REG_PLL_CTRL);
-}
-
-#else
-static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
-{
-	u16 clk_src;
-	u8 clk_div;
-
-	if (clock == 0) {
-		//writew(0, AU6601_CLK_SELECT);
 		au6601_write16(host, 0, AU6601_CLK_SELECT);
 		au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 		return;
 	}
 
-	if (clock <= MHZ_TO_HZ(1)) {
-		clk_src = AU6601_CLK_31_25_MHZ;
-		clk_div = 200;
-	}
+	for (i = 0; i < ARRAY_SIZE(au6601_pll_cfg); i++) {
+		unsigned int tmp_div, tmp_diff;
+		const struct au6601_pll_conf *cfg = &au6601_pll_cfg[i];
 
-	if ((MHZ_TO_HZ(1) < clock) && (clock < MHZ_TO_HZ(5))) {
-		clk_src = AU6601_CLK_31_25_MHZ;
-		clk_div = 16;
-	}
+		tmp_div = DIV_ROUND_UP(cfg->clk_src_freq, clock);
+		if (cfg->min_div > tmp_div || tmp_div > cfg->max_div)
+			continue;
 
-	if ((MHZ_TO_HZ(5) <= clock) && (clock < MHZ_TO_HZ(10))) {
-		clk_src = AU6601_CLK_48_MHZ;
-		clk_div = 10;
-	}
+		tmp_clock = DIV_ROUND_UP(cfg->clk_src_freq, tmp_div);
+		tmp_diff = abs(clock - tmp_clock);
 
-	if ((MHZ_TO_HZ(10) <= clock) && (clock < MHZ_TO_HZ(20))) {
-		clk_src = AU6601_CLK_48_MHZ;
-		clk_div = 5;
-	}
-
-	if ((MHZ_TO_HZ(20) <= clock) && (clock < MHZ_TO_HZ(25))) {
-		clk_src = AU6601_CLK_125_MHZ;
-		clk_div = 7;
-	}
-
-	if ((MHZ_TO_HZ(25) <= clock) && (clock < MHZ_TO_HZ(40))) {
-		clk_src = AU6601_CLK_48_MHZ;
-		clk_div = 2;
-	}
-
-	if ((MHZ_TO_HZ(40) <= clock) && (clock < MHZ_TO_HZ(50))) {
-		clk_src = AU6601_CLK_384_MHZ;
-		clk_div = 10;
-	}
-
-	if ((MHZ_TO_HZ(50) <= clock) && (clock < MHZ_TO_HZ(60))) {
-		clk_src = AU6601_CLK_48_MHZ;
-		clk_div = 1;
-	}
-
-	if ((MHZ_TO_HZ(60) <= clock) && (clock < MHZ_TO_HZ(80))) {
-		clk_src = AU6601_CLK_384_MHZ;
-		clk_div = 7;
-	}
-
-	if ((MHZ_TO_HZ(80) <= clock) && (clock < MHZ_TO_HZ(100))) {
-		clk_src = AU6601_CLK_384_MHZ;
-		clk_div = 5;
-	}
-
-	if ((MHZ_TO_HZ(100) <= clock) && (clock < MHZ_TO_HZ(130))) {
-		clk_src = AU6601_CLK_384_MHZ;
-		clk_div = 4;
-	}
-
-	if ((MHZ_TO_HZ(130) <= clock) && (clock < MHZ_TO_HZ(194))) {
-		clk_src = AU6601_CLK_384_MHZ;
-		clk_div = 3;
-	}
-
-	if ((MHZ_TO_HZ(194) <= clock) && (clock < MHZ_TO_HZ(208))) {
-		clk_src = AU6601_CLK_384_MHZ;
-		clk_div = 2;
-	}
-
-	if (MHZ_TO_HZ(208) <= clock) {
-		clk_src = AU6601_CLK_384_MHZ | AU6601_CLK_OVER_CLK;
-		clk_div = 2;
+		if (tmp_diff >= 0 && tmp_diff < diff) {
+			diff = tmp_diff;
+			clk_src = cfg->clk_src_reg;
+			clk_div = tmp_div;
+			clock_out = tmp_clock;
+		}
 	}
 
 	clk_src |= ((clk_div - 1) << 8);
 	clk_src |= AU6601_CLK_ENABLE;
 
-	dev_dbg(host->dev, "set freq %d, use div %d, mod %x\n",
-			clock, clk_div, clk_src);
+	dev_dbg(host->dev, "set freq %d cal freq %d, use div %d, mod %x\n",
+			clock, tmp_clock, clk_div, clk_src);
 
 	au6601_write16(host, clk_src, AU6601_CLK_SELECT);
+
 }
-#endif
 
 static void au6601_set_bus_width(struct mmc_host *mmc, struct mmc_ios *ios)
 {
@@ -1465,7 +1361,7 @@ static void au6601_post_req(struct mmc_host *mmc,
 
 	dev_dbg(host->dev, "do post request\n");
 
-	if (data->host_cookie != COOKIE_UNMAPPED) {
+	if (data->host_cookie == COOKIE_MAPPED) {
 		if (!(data->flags & MMC_DATA_WRITE))
 			dma_sync_sg_for_cpu(host->dev, data->sg,
 					    data->sg_len,
@@ -1669,7 +1565,6 @@ static void au6601_hw_init(struct au6601_host *host)
 
 	au6601_write8(host, AU6601_BUS_WIDTH_1BIT, AU6601_REG_BUS_CTRL);
 
-#if 1
 	/* TODO: actual meaning of this values? How it should be used? */
 	au6601_write8(host, 0x44, AU6601_PAD_DRIVE0);
 	au6601_write8(host, 0x44, AU6601_PAD_DRIVE1);
@@ -1679,7 +1574,7 @@ static void au6601_hw_init(struct au6601_host *host)
 	/* TODO: same here: actual meaning of this values?
 	 * How it should be used? */
 	au6601_write8(host, 0x20, AU6601_CLK_DELAY);
-#endif
+
 	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
 	au6601_write8(host, cfg->dma, AU6601_DMA_BOUNDARY);
 
@@ -1713,7 +1608,6 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	if (ret)
 		return ret;
 
-	/* FIXME: create managed version of mmc_alloc_host and use it */
 	mmc = mmc_alloc_host(sizeof(struct au6601_host *), &pdev->dev);
 	if (!mmc) {
 		dev_err(&pdev->dev, "Can't allocate MMC\n");
@@ -1727,7 +1621,6 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	host->dev = &pdev->dev;
 	host->cfg = cfg;
 	host->cur_power_mode = MMC_POWER_UNDEFINED;
-	//host->use_dma = false;
 	host->use_dma = true;
 
 	ret = pci_request_regions(pdev, DRVNAME);
