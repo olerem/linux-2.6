@@ -41,7 +41,8 @@
  * will stall.
  */
 #define AU6601_REG_SDMA_ADDR			0x00
-#define AU6601_SDMA_MASK			0xffff0000
+//#define AU6601_SDMA_MASK			0xffff0000
+#define AU6601_SDMA_MASK			0xffffffff
 
 #define AU6601_DMA_BOUNDARY			0x05
 #define AU6621_DMA_PAGE_CNT			0x05
@@ -663,11 +664,11 @@ static void au6601_data_set_dma(struct au6601_host *host)
 		dev_err(host->dev, "have blocks, but no SG\n");
 		return;
 	}
-	dev_dbg(host->dev, "%s\n", __func__);
 
 	addr = (u32)sg_dma_address(host->sg);
 	len = sg_dma_len(host->sg);
 
+	dev_info(host->dev, "%s 0x%08x\n", __func__, addr);
 	au6601_write32(host, addr, AU6601_REG_SDMA_ADDR);
 	host->sg = sg_next(host->sg);
 	host->sg_count--;
@@ -831,7 +832,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 		au6601_prepare_sg_miter(host);
 
 	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
-	au6601_trigger_data_transfer(host, true);
+	//au6601_trigger_data_transfer(host, true);
 }
 
 static void au6601_send_cmd(struct au6601_host *host,
@@ -1316,7 +1317,7 @@ static void au6601_pre_req(struct mmc_host *mmc,
 	/* TODO: need explanation :_(
 	 * allow only CMD18 + non zero args. In other case DMA silently fails.
 	 */
-	if (!(cmd->opcode == 18 && cmd->arg))
+	if (cmd->opcode != 18)
 		return;
 	/*
 	 * We don't do DMA on "complex" transfers, i.e. with
@@ -1330,7 +1331,7 @@ static void au6601_pre_req(struct mmc_host *mmc,
 		return;
 
 	for_each_sg(data->sg, sg, data->sg_len, i) {
-		if (sg->offset & 3 || sg->length != AU6601_MAX_DMA_BLOCK_SIZE)
+		if (sg->length != AU6601_MAX_DMA_BLOCK_SIZE)
 			return;
 	}
 
@@ -1339,13 +1340,9 @@ static void au6601_pre_req(struct mmc_host *mmc,
 
 	sg_len = dma_map_sg(host->dev, data->sg, data->sg_len,
 			    mmc_get_dma_dir(data));
-	if (sg_len) {
-		if (data->flags & MMC_DATA_WRITE)
-			dma_sync_sg_for_device(host->dev, data->sg,
-					       data->sg_len,
-					       mmc_get_dma_dir(data));
+	if (sg_len)
 		data->host_cookie = COOKIE_MAPPED;
-	}
+
 	data->sg_count = sg_len;
 }
 
@@ -1362,10 +1359,6 @@ static void au6601_post_req(struct mmc_host *mmc,
 	dev_dbg(host->dev, "do post request\n");
 
 	if (data->host_cookie == COOKIE_MAPPED) {
-		if (!(data->flags & MMC_DATA_WRITE))
-			dma_sync_sg_for_cpu(host->dev, data->sg,
-					    data->sg_len,
-					    mmc_get_dma_dir(data));
 		dma_unmap_sg(host->dev,
 			     data->sg,
 			     data->sg_len,
@@ -1538,7 +1531,7 @@ static void au6601_init_mmc(struct au6601_host *host)
 	mmc->f_max = AU6601_MAX_CLOCK;
 	/* mesured Vdd: 3.4 and 1.8 */
 	mmc->ocr_avail = MMC_VDD_165_195 | MMC_VDD_33_34;
-	mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SD_HIGHSPEED;
+//	mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SD_HIGHSPEED;
 	mmc->caps2 = MMC_CAP2_NO_SDIO;
 	mmc->ops = &au6601_sdc_ops;
 
@@ -1655,7 +1648,7 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 		goto error_release_regions;
 	}
 
-	ret = pci_set_dma_mask(host->pdev, AU6601_SDMA_MASK);
+	ret = dma_set_mask(host->dev, AU6601_SDMA_MASK);
 	if (ret) {
 		dev_err(host->dev, "Failed to set DMA mask\n");
 		goto error_release_regions;
