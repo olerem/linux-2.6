@@ -92,21 +92,6 @@
 
 #define AU6601_CLK_DIVIDER			0x73
 
-#if 1
-/* recheck clock */
-#define AU6601_REG_PLL_CTRL	0x72
- #define AU6601_PLL_DIV8_MASK	0xff
- #define AU6601_PLL_DIV4_MASK	0xf
- #define AU6601_PLL_DIV_S	8
- #define AU6601_PLL_MOD4	0xb	/* x 13,5 */
- #define AU6601_PLL_MOD3	0x3	/* x 12,5 */
- #define AU6601_PLL_MOD2	0x2	/* x 4	  */
- #define AU6601_PLL_MOD1	0x1	/* x 1,5  */
- #define AU6601_PLL_MOD0	0x0	/* x 1	  */
- #define AU6601_PLL_MOD_S	4
- #define AU6601_PLL_EN		BIT(0)
-#endif
-
 #define AU6601_INTERFACE_MODE_CTRL		0x74
 #define AU6601_DLINK_MODE			0x80
 #define	AU6601_INTERRUPT_DELAY_TIME		0x40
@@ -665,6 +650,12 @@ static void au6601_data_set_dma(struct au6601_host *host)
 		return;
 	}
 
+	if (!sg_dma_len(host->sg)) {
+		dev_err(host->dev, "DMA SG len == 0\n");
+		return;
+	}
+
+
 	addr = (u32)sg_dma_address(host->sg);
 	len = sg_dma_len(host->sg);
 
@@ -672,9 +663,6 @@ static void au6601_data_set_dma(struct au6601_host *host)
 	au6601_write32(host, addr, AU6601_REG_SDMA_ADDR);
 	host->sg = sg_next(host->sg);
 	host->sg_count--;
-
-	if (data->flags & MMC_DATA_WRITE)
-		return;
 }
 
 static void au6601_trigger_data_transfer(struct au6601_host *host, bool early)
@@ -698,7 +686,7 @@ static void au6601_trigger_data_transfer(struct au6601_host *host, bool early)
 		au6601_data_set_dma(host);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
-		au6601_write32(host, AU6601_MAX_DMA_BLOCK_SIZE,
+		au6601_write32(host, host->sg_count * 0x1000,
 			       AU6601_REG_BLOCK_SIZE);
 	} else {
 		au6601_write32(host, data->blksz, AU6601_REG_BLOCK_SIZE);
@@ -792,8 +780,9 @@ static void au6601_finish_data(struct au6601_host *host)
 		if (data->error)
 			au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 
+		au6601_unmask_sd_irqs(host);
 		au6601_send_cmd(host, data->stop);
-		udelay(100);
+		return;
 	}
 
 	au6601_request_complete(host, 1);
@@ -1029,9 +1018,9 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 	case AU6601_INT_DMA_END:
 		if (!host->sg_count) {
 			au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
-			au6601_reset(host, AU6601_RESET_DATA);
 			return 0;
 		}
+
 		au6601_data_set_dma(host);
 		break;
 	default:
@@ -1039,9 +1028,6 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 		break;
 	}
 
-	/* FIXME: why we get DATA END, even if we still have data and able to
-	 * process it?
-	 */
 	if (intmask & AU6601_INT_DATA_END)
 		return 0;
 
@@ -1648,7 +1634,7 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 		goto error_release_regions;
 	}
 
-	ret = dma_set_mask(host->dev, AU6601_SDMA_MASK);
+	ret = dma_set_mask_and_coherent(host->dev, AU6601_SDMA_MASK);
 	if (ret) {
 		dev_err(host->dev, "Failed to set DMA mask\n");
 		goto error_release_regions;
