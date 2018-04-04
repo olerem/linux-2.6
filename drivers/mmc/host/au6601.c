@@ -307,6 +307,7 @@ struct au6601_host {
 	u32			irq_status_sd;
 	struct au6601_dev_cfg	*cfg;
 	unsigned char		cur_power_mode;
+	unsigned char		cur_bus_mode;
 
 	/* aspm section */
 	int pdev_cap_off;
@@ -686,7 +687,7 @@ static void au6601_trigger_data_transfer(struct au6601_host *host, bool early)
 		au6601_data_set_dma(host);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
-		au6601_write32(host, host->sg_count * 0x1000,
+		au6601_write32(host, data->sg_count * 0x1000,
 			       AU6601_REG_BLOCK_SIZE);
 	} else {
 		au6601_write32(host, data->blksz, AU6601_REG_BLOCK_SIZE);
@@ -820,7 +821,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 	if (data->host_cookie != COOKIE_MAPPED)
 		au6601_prepare_sg_miter(host);
 
-	au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
+	//au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 	//au6601_trigger_data_transfer(host, true);
 }
 
@@ -902,6 +903,7 @@ static void au6601_err_irq(struct au6601_host *host, u32 intmask)
 		host->data->bytes_xfered = 0;
 	}
 
+	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 	au6601_request_complete(host, 1);
 }
 
@@ -1004,14 +1006,14 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 	case AU6601_INT_READ_BUF_RDY:
 		au6601_trf_block_pio(host, true);
 		if (!host->blocks)
-			return 0;
+			break;
 		au6601_trigger_data_transfer(host, false);
 		return 1;
 		break;
 	case AU6601_INT_WRITE_BUF_RDY:
 		au6601_trf_block_pio(host, false);
 		if (!host->blocks)
-			return 0;
+			break;
 		au6601_trigger_data_transfer(host, false);
 		return 1;
 		break;
@@ -1212,19 +1214,28 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 
 }
 
+static void au6601_set_timing(struct mmc_host *mmc, struct mmc_ios *ios)
+{
+	struct au6601_host *host = mmc_priv(mmc);
+
+	if (ios->timing == MMC_TIMING_LEGACY) {
+		au6601_rmw8(host, AU6601_CLK_DELAY,
+			    AU6601_CLK_POSITIVE_EDGE_ALL, 0);
+	} else {
+		au6601_rmw8(host, AU6601_CLK_DELAY,
+			    0, AU6601_CLK_POSITIVE_EDGE_ALL);
+	}
+}
+
 static void au6601_set_bus_width(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct au6601_host *host = mmc_priv(mmc);
 
 	if (ios->bus_width == MMC_BUS_WIDTH_1) {
 		au6601_write8(host, 0, AU6601_REG_BUS_CTRL);
-		au6601_rmw8(host, AU6601_CLK_DELAY,
-			    AU6601_CLK_POSITIVE_EDGE_ALL, 0);
 	} else if (ios->bus_width == MMC_BUS_WIDTH_4) {
 		au6601_write8(host, AU6601_BUS_WIDTH_4BIT,
 			      AU6601_REG_BUS_CTRL);
-		au6601_rmw8(host, AU6601_CLK_DELAY,
-			    0, AU6601_CLK_POSITIVE_EDGE_ALL);
 	} else
 		dev_err(host->dev, "Unknown BUS mode\n");
 
@@ -1409,6 +1420,7 @@ static void au6601_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		au6601_set_power_mode(mmc, ios);
 		host->cur_power_mode = ios->power_mode;
 	} else {
+		au6601_set_timing(mmc, ios);
 		au6601_set_bus_width(mmc, ios);
 		au6601_set_clock(host, ios->clock);
 	}
@@ -1456,7 +1468,6 @@ static void au6601_request_complete(struct au6601_host *host,
 {
 	struct mmc_request *mrq;
 
-	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 	/*
 	 * If this tasklet gets rescheduled while running, it will
 	 * be run again afterwards but without any active request.
@@ -1500,6 +1511,8 @@ static void au6601_timeout_timer(struct work_struct *work)
 			else
 				host->mrq->cmd->error = -ETIMEDOUT;
 		}
+
+		au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 		au6601_request_complete(host, 0);
 	}
 
@@ -1517,7 +1530,7 @@ static void au6601_init_mmc(struct au6601_host *host)
 	mmc->f_max = AU6601_MAX_CLOCK;
 	/* mesured Vdd: 3.4 and 1.8 */
 	mmc->ocr_avail = MMC_VDD_165_195 | MMC_VDD_33_34;
-//	mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SD_HIGHSPEED;
+	mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SD_HIGHSPEED;
 	mmc->caps2 = MMC_CAP2_NO_SDIO;
 	mmc->ops = &au6601_sdc_ops;
 
@@ -1537,22 +1550,29 @@ static void au6601_hw_init(struct au6601_host *host)
 {
 	struct au6601_dev_cfg *cfg = host->cfg;
 
-	au6601_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
+	au6601_reset(host, AU6601_RESET_CMD);
 
 	au6601_write8(host, 0, AU6601_DMA_BOUNDARY);
 	au6601_write8(host, AU6601_SD_CARD, AU6601_ACTIVE_CTRL);
 
-	au6601_write8(host, AU6601_BUS_WIDTH_1BIT, AU6601_REG_BUS_CTRL);
+	au6601_write8(host, 0, AU6601_REG_BUS_CTRL);
 
+	au6601_reset(host, AU6601_RESET_DATA);
+	au6601_write8(host, 0, AU6601_DMA_BOUNDARY);
+
+	au6601_write8(host, 0, AU6601_INTERFACE_MODE_CTRL);
 	/* TODO: actual meaning of this values? How it should be used? */
 	au6601_write8(host, 0x44, AU6601_PAD_DRIVE0);
 	au6601_write8(host, 0x44, AU6601_PAD_DRIVE1);
 	au6601_write8(host, 0x00, AU6601_PAD_DRIVE2);
 
+	/* kind of read eeprom */
+	au6601_write8(host, 0x00, AU6601_FUNCTION);
+	au6601_read8(host, AU6601_FUNCTION);
 	/* set default phase value */
 	/* TODO: same here: actual meaning of this values?
 	 * How it should be used? */
-	au6601_write8(host, 0x20, AU6601_CLK_DELAY);
+	//au6601_write8(host, 0x20, AU6601_CLK_DELAY);
 
 	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
 	au6601_write8(host, cfg->dma, AU6601_DMA_BOUNDARY);
@@ -1684,7 +1704,8 @@ static void au6601_pci_remove(struct pci_dev *pdev)
 
 	host = pci_get_drvdata(pdev);
 
-	flush_delayed_work(&host->timeout_work);
+	if (cancel_delayed_work_sync(&host->timeout_work))
+		au6601_request_complete(host, 0);
 
 	mmc_remove_host(host->mmc);
 
@@ -1702,6 +1723,7 @@ static int au6601_suspend(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct au6601_host *host = pci_get_drvdata(pdev);
 
+	cancel_delayed_work_sync(&host->timeout_work);
 	flush_delayed_work(&host->timeout_work);
 	au6601_hw_uninit(host);
 	return 0;
