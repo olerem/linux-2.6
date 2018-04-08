@@ -1567,7 +1567,7 @@ static void au6601_hw_init(struct au6601_host *host)
 	au6601_write8(host, 0x00, AU6601_PAD_DRIVE2);
 
 	/* kind of read eeprom */
-	au6601_write8(host, 0x00, AU6601_FUNCTION);
+	au6601_write8(host, 0x01, AU6601_FUNCTION);
 	au6601_read8(host, AU6601_FUNCTION);
 	/* set default phase value */
 	/* TODO: same here: actual meaning of this values?
