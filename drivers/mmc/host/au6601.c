@@ -260,6 +260,10 @@
 #define AU6601_MS_INT_TPC_MASK			0x003d8002
 #define AU6601_MS_INT_TPC_ERROR			0x003d0000
 
+static unsigned use_dma = 1;
+module_param(use_dma, uint, 0);
+MODULE_PARM_DESC(use_dma, "Whether to use DMA or not. Default = 1");
+
 enum au6601_cookie {
 	COOKIE_UNMAPPED,
 	COOKIE_PRE_MAPPED,	/* mapped by pre_req() of dwmmc */
@@ -1620,7 +1624,7 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	host->dev = &pdev->dev;
 	host->cfg = cfg;
 	host->cur_power_mode = MMC_POWER_UNDEFINED;
-	host->use_dma = true;
+	host->use_dma = use_dma;
 
 	ret = pci_request_regions(pdev, DRVNAME);
 	if (ret) {
