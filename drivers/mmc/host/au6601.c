@@ -27,7 +27,7 @@
 #define AU6601_BASE_CLOCK			MHZ_TO_HZ(31)
 #define AU6601_MIN_CLOCK			(150 * 1000)
 #define AU6601_MAX_CLOCK			MHZ_TO_HZ(208)
-#define AU6601_MAX_DMA_SEGMENTS			(8 * 64)
+#define AU6601_MAX_DMA_SEGMENTS			(8 * 120)
 #define AU6601_MAX_PIO_SEGMENTS			1
 #define AU6601_MAX_DMA_BLOCK_SIZE		0x1000
 #define AU6601_MAX_PIO_BLOCK_SIZE		0x200
@@ -664,7 +664,7 @@ static void au6601_data_set_dma(struct au6601_host *host)
 	addr = (u32)sg_dma_address(host->sg);
 	len = sg_dma_len(host->sg);
 
-	dev_info(host->dev, "%s 0x%08x\n", __func__, addr);
+	dev_dbg(host->dev, "%s 0x%08x\n", __func__, addr);
 	au6601_write32(host, addr, AU6601_REG_SDMA_ADDR);
 	host->sg = sg_next(host->sg);
 	host->sg_count--;
@@ -826,7 +826,7 @@ static void au6601_prepare_data(struct au6601_host *host,
 		au6601_prepare_sg_miter(host);
 
 	//au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
-	//au6601_trigger_data_transfer(host, true);
+	au6601_trigger_data_transfer(host, true);
 }
 
 static void au6601_send_cmd(struct au6601_host *host,
@@ -1023,8 +1023,8 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 		break;
 	case AU6601_INT_DMA_END:
 		if (!host->sg_count) {
-			au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
-			return 0;
+			//au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
+			break;
 		}
 
 		au6601_data_set_dma(host);
@@ -1185,7 +1185,7 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 
 	if (clock == 0) {
 		au6601_write16(host, 0, AU6601_CLK_SELECT);
-		au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
+		//au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 		return;
 	}
 
