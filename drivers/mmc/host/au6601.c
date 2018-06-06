@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2014-2018 Oleksij Rempel <linux@rempel-privat.de>
+ * Copyright (C) 2018 Oleksij Rempel <linux@rempel-privat.de>
  *
  * Direver for Alcor Micro AU6601 and AU6621 controllers
  */
@@ -168,12 +168,8 @@
 #define	AU6601_OPT_CMD_NWT			BIT(3)
 #define	AU6601_OPT_STOP_CLK			BIT(2)
 #define	AU6601_OPT_DDR_MODE			BIT(1)
-/* TODO: according to spec, we support 1.2, 1.8 and 3.3.
- * How to enable 1.2?
- */
 #define	AU6601_OPT_SD_18V			BIT(0)
 
-/* TODO: how to use clock delay */
 #define AU6601_CLK_DELAY			0x86
 #define	AU6601_CLK_DATA_POSITIVE_EDGE		0x80
 #define	AU6601_CLK_CMD_POSITIVE_EDGE		0x40
@@ -469,7 +465,6 @@ static inline void au6601_rmw8(struct au6601_host *host, unsigned int addr,
 	au6601_write8(host, var, addr);
 }
 
-/* TODO: find if we have some mainline generic way to do it */
 static int pci_find_cap_offset(struct au6601_host *host, struct pci_dev *pci)
 {
 	int where;
@@ -836,7 +831,6 @@ static void au6601_send_cmd(struct au6601_host *host,
 
 	cancel_delayed_work_sync(&host->timeout_work);
 
-	/* TODO: Do we support busy timeout? */
 	if (!cmd->data && cmd->busy_timeout)
 		timeout = cmd->busy_timeout;
 	else
@@ -929,7 +923,6 @@ static int au6601_cmd_irq_done(struct au6601_host *host, u32 intmask)
 		struct mmc_command *cmd = host->cmd;
 
 		cmd->resp[0] = au6601_read32be(host, AU6601_REG_CMD_RSP0);
-		/* TODO should we check card status here? */
 		dev_dbg(host->dev, "RSP0: 0x%04x\n", cmd->resp[0]);
 		if (host->cmd->flags & MMC_RSP_136) {
 			cmd->resp[1] =
@@ -1124,7 +1117,6 @@ static irqreturn_t au6601_irq_thread(int irq, void *d)
 	}
 
 	if (intmask & AU6601_INT_OVER_CURRENT_ERR) {
-		/* TODO: provide over current handler */
 		dev_warn(host->dev,
 			 "warning: over current detected!\n");
 		intmask &= ~AU6601_INT_OVER_CURRENT_ERR;
@@ -1314,7 +1306,6 @@ static void au6601_pre_req(struct mmc_host *mmc,
 
 	data->host_cookie = COOKIE_UNMAPPED;
 
-	/* TODO: need explanation :_(
 	 * allow only CMD18 + non zero args. In other case DMA silently fails.
 	 */
 	if (cmd->opcode != 18)
@@ -1564,7 +1555,6 @@ static void au6601_hw_init(struct au6601_host *host)
 	au6601_write8(host, 0, AU6601_DMA_BOUNDARY);
 
 	au6601_write8(host, 0, AU6601_INTERFACE_MODE_CTRL);
-	/* TODO: actual meaning of this values? How it should be used? */
 	au6601_write8(host, 0x44, AU6601_PAD_DRIVE0);
 	au6601_write8(host, 0x44, AU6601_PAD_DRIVE1);
 	au6601_write8(host, 0x00, AU6601_PAD_DRIVE2);
@@ -1572,10 +1562,6 @@ static void au6601_hw_init(struct au6601_host *host)
 	/* kind of read eeprom */
 	au6601_write8(host, 0x01, AU6601_FUNCTION);
 	au6601_read8(host, AU6601_FUNCTION);
-	/* set default phase value */
-	/* TODO: same here: actual meaning of this values?
-	 * How it should be used? */
-	//au6601_write8(host, 0x20, AU6601_CLK_DELAY);
 
 	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
 	au6601_write8(host, cfg->dma, AU6601_DMA_BOUNDARY);
