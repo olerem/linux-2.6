@@ -41,7 +41,6 @@
  * will stall.
  */
 #define AU6601_REG_SDMA_ADDR			0x00
-//#define AU6601_SDMA_MASK			0xffff0000
 #define AU6601_SDMA_MASK			0xffffffff
 
 #define AU6601_DMA_BOUNDARY			0x05
@@ -819,7 +818,6 @@ static void au6601_prepare_data(struct au6601_host *host,
 	if (data->host_cookie != COOKIE_MAPPED)
 		au6601_prepare_sg_miter(host);
 
-	//au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 	au6601_trigger_data_transfer(host, true);
 }
 
@@ -1015,7 +1013,6 @@ static int au6601_data_irq_done(struct au6601_host *host, u32 intmask)
 		break;
 	case AU6601_INT_DMA_END:
 		if (!host->sg_count) {
-			//au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 			break;
 		}
 
@@ -1176,7 +1173,6 @@ static void au6601_set_clock(struct au6601_host *host, unsigned int clock)
 
 	if (clock == 0) {
 		au6601_write16(host, 0, AU6601_CLK_SELECT);
-		//au6601_write8(host, 0, AU6601_DATA_XFER_CTRL);
 		return;
 	}
 
