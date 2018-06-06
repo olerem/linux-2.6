@@ -1302,8 +1302,6 @@ static void au6601_pre_req(struct mmc_host *mmc,
 
 	data->host_cookie = COOKIE_UNMAPPED;
 
-	 * allow only CMD18 + non zero args. In other case DMA silently fails.
-	 */
 	if (cmd->opcode != 18)
 		return;
 	/*
