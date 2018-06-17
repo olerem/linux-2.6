@@ -430,6 +430,14 @@ config MMC_WBSD
 
 	  If unsure, say N.
 
+config MMC_ALCOR
+	tristate "Alcor Micro/Alcor Link SD/MMC controller"
+  select MISC_ALCOR_PCI
+	help
+	  This selects the Alcor Micro Multimedia card interface.
+
+	  If unsure, say N.
+
 config MMC_AU1X
 	tristate "Alchemy AU1XX0 MMC Card Interface support"
 	depends on MIPS_ALCHEMY
