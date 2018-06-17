@@ -1,3 +1,12 @@
+config MISC_ALCOR_PCI
+	tristate "Alcor Micro/Alcor Link PCI-E card reader"
+	depends on PCI
+	select MFD_CORE
+	help
+	  This selects the Alcor Micro Multimedia card interface.
+
+	  If unsure, say N.
+
 config MISC_RTSX_PCI
 	tristate "Realtek PCI-E card reader"
 	depends on PCI
