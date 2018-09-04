@@ -291,6 +291,7 @@ struct au6601_host {
 	struct mmc_data *data;
 	unsigned int dma_on:1;
 	unsigned int early_data:1;
+	unsigned int use_bounce:1;
 	bool use_dma;
 
 	struct mutex cmd_mutex;
@@ -302,6 +303,12 @@ struct au6601_host {
 	struct scatterlist *sg;
 	unsigned int blocks;		/* remaining PIO blocks */
 	int sg_count;
+
+	char *bounce_buffer;	/* For packing SDMA reads/writes */
+	dma_addr_t bounce_addr;
+	int bounce_sg_count;
+	struct scatterlist *bounce_sg;
+	struct sg_table bounce_sgtable;
 
 	u32			irq_status_sd;
 	struct au6601_dev_cfg	*cfg;
@@ -810,8 +817,14 @@ static void au6601_prepare_data(struct au6601_host *host,
 	host->data = data;
 	host->data->bytes_xfered = 0;
 	host->blocks = data->blocks;
-	host->sg = data->sg;
-	host->sg_count = data->sg_count;
+	if (host->use_bounce) {
+		host->sg = host->bounce_sg;
+		host->sg_count = data->sg_count;
+	} else {
+		host->sg = data->sg;
+		host->sg_count = data->sg_count;
+	}
+
 	dev_dbg(host->dev, "prepare DATA: sg %i, blocks: %i\n",
 		host->sg_count, host->blocks);
 
@@ -1304,20 +1317,16 @@ static void au6601_pre_req(struct mmc_host *mmc,
 
 	if (cmd->opcode != 18)
 		return;
-	/*
-	 * We don't do DMA on "complex" transfers, i.e. with
-	 * non-word-aligned buffers or lengths. Also, we don't bother
-	 * with all the DMA setup overhead for short transfers.
-	 */
+
 	if (data->blocks * data->blksz < AU6601_MAX_DMA_BLOCK_SIZE)
-		return;
+		goto return;
 
 	if (data->blksz & 3)
 		return;
 
 	for_each_sg(data->sg, sg, data->sg_len, i) {
 		if (sg->length != AU6601_MAX_DMA_BLOCK_SIZE)
-			return;
+			goto bounce;
 	}
 
 	dev_dbg(host->dev, "do pre request\n");
@@ -1327,8 +1336,13 @@ static void au6601_pre_req(struct mmc_host *mmc,
 			    mmc_get_dma_dir(data));
 	if (sg_len)
 		data->host_cookie = COOKIE_MAPPED;
+	else
+		goto bounce;
 
 	data->sg_count = sg_len;
+	return;
+bounce:
+	host->use_bounce = true;
 }
 
 static void au6601_post_req(struct mmc_host *mmc,
@@ -1508,7 +1522,61 @@ static void au6601_timeout_timer(struct work_struct *work)
 	mutex_unlock(&host->cmd_mutex);
 }
 
+static int au6601_init_dma(struct au6601_host *host)
+{
+	struct mmc_host *mmc = host->mmc;
+	struct scatterlist *sg, *sg_ptr;
+	unsigned int left_size, i, seg_size;
 
+	host->bounce_buffer = devm_kmalloc(host->dev,
+					   mmc->max_req_size,
+					   GFP_KERNEL);
+	if (!host->bounce_buffer) {
+		dev_err(host->dev, "failed to allocate %u bytes for bounce buffer\n",
+			mmc_hostname(mmc), mmc->max_req_size);
+		return -ENOMEM;
+	}
+
+	host->bounce_addr = dma_map_single(host->dev,
+					   host->bounce_buffer,
+					   mmc->max_req_size,
+					   DMA_BIDIRECTIONAL);
+	ret = dma_mapping_error(host->dev, host->bounce_addr);
+	if (ret) {
+		dev_err(host->dev, "Filed to map bounce buffer\n",
+		return ret;
+	}
+
+	host->bounce_sg_count = mmc->max_segs;
+	if (sg_alloc_table(&host->bounce_sgtable, host->bounce_sg_count,
+			   GFP_KERNEL)) {
+		dev_err(host->dev, "Filed to alloc sg table\n",
+		return -ENOMEM;
+	}
+
+	host->bounce_sg = host->bounce_sgtable.sgl;
+	seg_size = mmc->max_seg_size;
+
+	for_each_sg(host->bounce_sg, sg_ptr, host->bounce_sg_count, i) {
+		sg_set_buf(sg_ptr, buf + i * seg_size,
+			   min(seg_size, left_size));
+		left_size -= seg_size;
+	}
+
+	host->use_bounce = false;
+
+	return 0;
+}
+
+static void au6601_uninit_dma(struct au6601_host *host)
+{
+	struct mmc_host *mmc = host->mmc;
+
+	sg_free_table(&host->bounce_sgtable);
+	dma_unmap_single(host->dev, host->bounce_buffer, mmc->max_req_size,
+			 DMA_BIDIRECTIONAL);
+
+}
 
 static void au6601_init_mmc(struct au6601_host *host)
 {
@@ -1643,6 +1711,11 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 		goto error_release_regions;
 	}
 
+	au6601_init_mmc(host);
+	ret = au6601_init_dma(host);
+	if (ret)
+		goto error_release_regions;
+
 	pci_set_master(pdev);
 	pci_set_drvdata(pdev, host);
 	pci_init_check_aspm(host);
@@ -1654,7 +1727,6 @@ static int au6601_pci_probe(struct pci_dev *pdev,
 	 */
 	INIT_DELAYED_WORK(&host->timeout_work, au6601_timeout_timer);
 
-	au6601_init_mmc(host);
 	au6601_hw_init(host);
 
 	mmc_add_host(mmc);
@@ -1693,6 +1765,7 @@ static void au6601_pci_remove(struct pci_dev *pdev)
 	mmc_remove_host(host->mmc);
 
 	au6601_hw_uninit(host);
+	au6601_uninit_dma(host);
 
 	mmc_free_host(host->mmc);
 
