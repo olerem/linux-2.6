@@ -1319,10 +1319,10 @@ static void au6601_pre_req(struct mmc_host *mmc,
 		return;
 
 	if (data->blocks * data->blksz < AU6601_MAX_DMA_BLOCK_SIZE)
-		goto return;
+		return;
 
 	if (data->blksz & 3)
-		return;
+		goto bounce;
 
 	for_each_sg(data->sg, sg, data->sg_len, i) {
 		if (sg->length != AU6601_MAX_DMA_BLOCK_SIZE)
@@ -1525,15 +1525,16 @@ static void au6601_timeout_timer(struct work_struct *work)
 static int au6601_init_dma(struct au6601_host *host)
 {
 	struct mmc_host *mmc = host->mmc;
-	struct scatterlist *sg, *sg_ptr;
+	struct scatterlist *sg_ptr;
 	unsigned int left_size, i, seg_size;
+	int ret;
 
 	host->bounce_buffer = devm_kmalloc(host->dev,
 					   mmc->max_req_size,
 					   GFP_KERNEL);
 	if (!host->bounce_buffer) {
 		dev_err(host->dev, "failed to allocate %u bytes for bounce buffer\n",
-			mmc_hostname(mmc), mmc->max_req_size);
+			mmc->max_req_size);
 		return -ENOMEM;
 	}
 
@@ -1543,22 +1544,23 @@ static int au6601_init_dma(struct au6601_host *host)
 					   DMA_BIDIRECTIONAL);
 	ret = dma_mapping_error(host->dev, host->bounce_addr);
 	if (ret) {
-		dev_err(host->dev, "Filed to map bounce buffer\n",
+		dev_err(host->dev, "Filed to map bounce buffer\n");
 		return ret;
 	}
 
 	host->bounce_sg_count = mmc->max_segs;
 	if (sg_alloc_table(&host->bounce_sgtable, host->bounce_sg_count,
 			   GFP_KERNEL)) {
-		dev_err(host->dev, "Filed to alloc sg table\n",
+		dev_err(host->dev, "Filed to alloc sg table\n");
 		return -ENOMEM;
 	}
 
 	host->bounce_sg = host->bounce_sgtable.sgl;
 	seg_size = mmc->max_seg_size;
+	left_size = mmc->max_req_size;
 
 	for_each_sg(host->bounce_sg, sg_ptr, host->bounce_sg_count, i) {
-		sg_set_buf(sg_ptr, buf + i * seg_size,
+		sg_set_buf(sg_ptr, host->bounce_buffer + i * seg_size,
 			   min(seg_size, left_size));
 		left_size -= seg_size;
 	}
@@ -1573,7 +1575,7 @@ static void au6601_uninit_dma(struct au6601_host *host)
 	struct mmc_host *mmc = host->mmc;
 
 	sg_free_table(&host->bounce_sgtable);
-	dma_unmap_single(host->dev, host->bounce_buffer, mmc->max_req_size,
+	dma_unmap_single(host->dev, host->bounce_addr, mmc->max_req_size,
 			 DMA_BIDIRECTIONAL);
 
 }
