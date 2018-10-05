@@ -432,7 +432,7 @@ config MMC_WBSD
 
 config MMC_ALCOR
 	tristate "Alcor Micro/Alcor Link SD/MMC controller"
-	depends on PCI
+  select MISC_ALCOR_PCI
 	help
 	  This selects the Alcor Micro Multimedia card interface.
 
