@@ -321,20 +321,6 @@ static inline void alcor_unmask_ms_irqs(struct alcor_pci_priv *priv)
 	alcor_write32(priv, 0x3d00fa, AU6601_MS_INT_ENABLE);
 }
 
-static void alcor_reset(struct alcor_pci_priv *priv, u8 val)
-{
-	int i;
-
-	alcor_write8(priv, val | AU6601_BUF_CTRL_RESET,
-		      AU6601_REG_SW_RESET);
-	for (i = 0; i < 100; i++) {
-		if (!(alcor_read8(priv, AU6601_REG_SW_RESET) & val))
-			return;
-		udelay(50);
-	}
-	dev_err(priv->dev, "%s: timeout\n", __func__);
-}
-
 static int alcor_pci_probe(struct pci_dev *pdev,
 			   const struct pci_device_id *ent)
 {
