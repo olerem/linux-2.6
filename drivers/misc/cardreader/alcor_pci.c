@@ -336,11 +336,11 @@ static int alcor_pci_probe(struct pci_dev *pdev,
 	if (ret)
 		return ret;
 
-  priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
+	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
-  idr_preload(GFP_KERNEL);
+	idr_preload(GFP_KERNEL);
 	spin_lock(&alcor_pci_lock);
 	ret = idr_alloc(&alcor_pci_idr, priv, 0, 0, GFP_NOWAIT);
 	if (ret >= 0)
@@ -354,7 +354,7 @@ static int alcor_pci_probe(struct pci_dev *pdev,
 	priv->parent_pdev = pdev->bus->self;
 	priv->dev = &pdev->dev;
 	priv->cfg = cfg;
-  priv->irq = pdev->irq;
+	priv->irq = pdev->irq;
 
 	ret = pci_request_regions(pdev, DRV_NAME_ALCOR_PCI);
 	if (ret) {
