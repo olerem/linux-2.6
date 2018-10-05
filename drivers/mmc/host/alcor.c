@@ -126,12 +126,6 @@ static inline void alcor_mask_ms_irqs(struct alcor_sdmmc_host *host)
 	alcor_write32(priv, 0, AU6601_MS_INT_ENABLE);
 }
 
-static inline void alcor_unmask_ms_irqs(struct alcor_sdmmc_host *host)
-{
-	struct alcor_pci_priv *priv = host->alcor_pci;
-	alcor_write32(priv, 0x3d00fa, AU6601_MS_INT_ENABLE);
-}
-
 static void alcor_reset(struct alcor_sdmmc_host *host, u8 val)
 {
 	struct alcor_pci_priv *priv = host->alcor_pci;
@@ -207,14 +201,9 @@ static void alcor_trigger_data_transfer(struct alcor_sdmmc_host *host, bool earl
 		      AU6601_DATA_XFER_CTRL);
 }
 
-/*****************************************************************************\
- *									     *
- * Core functions							     *
- *									     *
-\*****************************************************************************/
-
 static void alcor_trf_block_pio(struct alcor_sdmmc_host *host, bool read)
 {
+	struct alcor_pci_priv *priv = host->alcor_pci;
 	size_t blksize, len;
 	u8 *buf;
 
@@ -247,9 +236,9 @@ static void alcor_trf_block_pio(struct alcor_sdmmc_host *host, bool read)
 	buf = host->sg_miter.addr;
 
 	if (read)
-		ioread32_rep(host->iobase + AU6601_REG_BUFFER, buf, len >> 2);
+		ioread32_rep(priv->iobase + AU6601_REG_BUFFER, buf, len >> 2);
 	else
-		iowrite32_rep(host->iobase + AU6601_REG_BUFFER, buf, len >> 2);
+		iowrite32_rep(priv->iobase + AU6601_REG_BUFFER, buf, len >> 2);
 
 	sg_miter_stop(&host->sg_miter);
 }
@@ -384,13 +373,6 @@ static void alcor_send_cmd(struct alcor_sdmmc_host *host,
 
 	schedule_delayed_work(&host->timeout_work, msecs_to_jiffies(timeout));
 }
-
-/*****************************************************************************\
- *									     *
- * Interrupt handling							     *
- *									     *
-\*****************************************************************************/
-
 
 static void alcor_err_irq(struct alcor_sdmmc_host *host, u32 intmask)
 {
@@ -1028,7 +1010,51 @@ static void alcor_timeout_timer(struct work_struct *work)
 	mutex_unlock(&host->cmd_mutex);
 }
 
+static void alcor_hw_init(struct alcor_sdmmc_host *host)
+{
+	struct alcor_pci_priv *priv = host->alcor_pci;
+	struct alcor_dev_cfg *cfg = priv->cfg;
 
+	alcor_reset(priv, AU6601_RESET_CMD);
+
+	alcor_write8(priv, 0, AU6601_DMA_BOUNDARY);
+	alcor_write8(priv, AU6601_SD_CARD, AU6601_ACTIVE_CTRL);
+
+	alcor_write8(priv, 0, AU6601_REG_BUS_CTRL);
+
+	alcor_reset(priv, AU6601_RESET_DATA);
+	alcor_write8(priv, 0, AU6601_DMA_BOUNDARY);
+
+	alcor_write8(priv, 0, AU6601_INTERFACE_MODE_CTRL);
+	alcor_write8(priv, 0x44, AU6601_PAD_DRIVE0);
+	alcor_write8(priv, 0x44, AU6601_PAD_DRIVE1);
+	alcor_write8(priv, 0x00, AU6601_PAD_DRIVE2);
+
+	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
+	alcor_write8(priv, cfg->dma, AU6601_DMA_BOUNDARY);
+
+	alcor_write8(priv, 0, AU6601_OUTPUT_ENABLE);
+	alcor_write8(priv, 0, AU6601_POWER_CONTROL);
+
+	alcor_write8(priv, AU6601_DETECT_EN, AU6601_DETECT_STATUS);
+	/* now we should be safe to enable IRQs */
+	alcor_unmask_sd_irqs(priv);
+}
+
+static void alcor_hw_uninit(struct alcor_sdmmc_host *host)
+{
+	struct alcor_pci_priv *priv = host->alcor_pci;
+
+	alcor_mask_sd_irqs(priv);
+	alcor_reset(priv, AU6601_RESET_CMD | AU6601_RESET_DATA);
+
+	alcor_write8(priv, 0, AU6601_DETECT_STATUS);
+
+	alcor_write8(priv, 0, AU6601_OUTPUT_ENABLE);
+	alcor_write8(priv, 0, AU6601_POWER_CONTROL);
+
+	alcor_write8(priv, 0, AU6601_OPT);
+}
 
 static void alcor_init_mmc(struct alcor_sdmmc_host *host)
 {
@@ -1075,8 +1101,8 @@ static int alcor_pci_sdmmc_drv_probe(struct platform_device *pdev)
 	host->alcor_pci = priv;
 
 	/* make sure irqs are disabled */
-	alcor_mask_sd_irqs(host);
-	alcor_mask_ms_irqs(host);
+	alcor_write32(priv, 0, AU6601_REG_INT_ENABLE);
+	alcor_write32(priv, 0, AU6601_MS_INT_ENABLE);
 
 	ret = devm_request_threaded_irq(&pdev->dev, priv->irq,
 			alcor_irq, alcor_irq_thread, IRQF_SHARED,
@@ -1096,6 +1122,7 @@ static int alcor_pci_sdmmc_drv_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&host->timeout_work, alcor_timeout_timer);
 
 	alcor_init_mmc(host);
+  alcor_hw_init(host);
 
 	mmc_add_host(mmc);
 	return 0;
@@ -1111,6 +1138,7 @@ static int alcor_pci_sdmmc_drv_remove(struct platform_device *pdev)
 	if (cancel_delayed_work_sync(&host->timeout_work))
 		alcor_request_complete(host, 0);
 
+  alcor_hw_uninit(host);
 	mmc_remove_host(host->mmc);
 	mmc_free_host(host->mmc);
 
