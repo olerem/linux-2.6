@@ -1124,6 +1124,7 @@ static int alcor_pci_sdmmc_drv_probe(struct platform_device *pdev)
 	alcor_init_mmc(host);
   alcor_hw_init(host);
 
+	platform_set_drvdata(pdev, host);
 	mmc_add_host(mmc);
 	return 0;
 
