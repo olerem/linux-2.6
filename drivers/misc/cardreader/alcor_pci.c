@@ -335,44 +335,6 @@ static void alcor_reset(struct alcor_pci_priv *priv, u8 val)
 	dev_err(priv->dev, "%s: timeout\n", __func__);
 }
 
-static void alcor_hw_init(struct alcor_pci_priv *priv)
-{
-	struct alcor_dev_cfg *cfg = priv->cfg;
-
-	alcor_reset(priv, AU6601_RESET_CMD);
-
-	alcor_write8(priv, 0, AU6601_DMA_BOUNDARY);
-	alcor_write8(priv, AU6601_SD_CARD, AU6601_ACTIVE_CTRL);
-
-	alcor_write8(priv, 0, AU6601_REG_BUS_CTRL);
-
-	alcor_reset(priv, AU6601_RESET_DATA);
-	alcor_write8(priv, 0, AU6601_DMA_BOUNDARY);
-
-	alcor_write8(priv, 0, AU6601_INTERFACE_MODE_CTRL);
-	alcor_write8(priv, 0x44, AU6601_PAD_DRIVE0);
-	alcor_write8(priv, 0x44, AU6601_PAD_DRIVE1);
-	alcor_write8(priv, 0x00, AU6601_PAD_DRIVE2);
-
-	/* kind of read eeprom */
-	alcor_write8(priv, 0x01, AU6601_FUNCTION);
-	alcor_read8(priv, AU6601_FUNCTION);
-
-	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
-	alcor_write8(priv, cfg->dma, AU6601_DMA_BOUNDARY);
-
-	alcor_write8(priv, 0, AU6601_OUTPUT_ENABLE);
-	alcor_write8(priv, 0, AU6601_POWER_CONTROL);
-	pci_aspm_ctrl(priv, 1);
-
-	alcor_write8(priv, AU6601_DETECT_EN, AU6601_DETECT_STATUS);
-	/* now we should be safe to enable IRQs */
-	alcor_unmask_sd_irqs(priv);
-	/* currently i don't know how to properly handle MS IRQ
-	 * and HW to test it. */
-	alcor_mask_ms_irqs(priv);
-}
-
 static int alcor_pci_probe(struct pci_dev *pdev,
 			   const struct pci_device_id *ent)
 {
@@ -427,8 +389,8 @@ static int alcor_pci_probe(struct pci_dev *pdev,
 	}
 
 	/* make sure irqs are disabled */
-	alcor_mask_sd_irqs(priv);
-	alcor_mask_ms_irqs(priv);
+	alcor_write32(priv, 0, AU6601_REG_INT_ENABLE);
+	alcor_write32(priv, 0, AU6601_MS_INT_ENABLE);
 
 	ret = dma_set_mask_and_coherent(priv->dev, AU6601_SDMA_MASK);
 	if (ret) {
@@ -449,7 +411,7 @@ static int alcor_pci_probe(struct pci_dev *pdev,
 	if (ret < 0)
 		goto error_release_regions;
 
-	alcor_hw_init(priv);
+	pci_aspm_ctrl(priv, 0);
 
 	return 0;
 
@@ -458,29 +420,13 @@ error_release_regions:
 	return ret;
 }
 
-static void alcor_hw_uninit(struct alcor_pci_priv *priv)
-{
-	alcor_mask_sd_irqs(priv);
-	alcor_mask_ms_irqs(priv);
-
-	alcor_reset(priv, AU6601_RESET_CMD | AU6601_RESET_DATA);
-
-	alcor_write8(priv, 0, AU6601_DETECT_STATUS);
-
-	alcor_write8(priv, 0, AU6601_OUTPUT_ENABLE);
-	alcor_write8(priv, 0, AU6601_POWER_CONTROL);
-
-	alcor_write8(priv, 0, AU6601_OPT);
-	pci_aspm_ctrl(priv, 1);
-}
-
 static void alcor_pci_remove(struct pci_dev *pdev)
 {
 	struct alcor_pci_priv *priv;
 
 	priv = pci_get_drvdata(pdev);
 
-	alcor_hw_uninit(priv);
+	pci_aspm_ctrl(priv, 1);
 
 	spin_lock(&alcor_pci_lock);
 	idr_remove(&alcor_pci_idr, priv->id);
@@ -496,7 +442,7 @@ static int alcor_suspend(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct alcor_pci_priv *priv = pci_get_drvdata(pdev);
 
-	alcor_hw_uninit(priv);
+	pci_aspm_ctrl(priv, 1);
 	return 0;
 }
 
@@ -507,7 +453,7 @@ static int alcor_resume(struct device *dev)
 	struct alcor_pci_priv *priv = pci_get_drvdata(pdev);
 
 	mutex_lock(&priv->cmd_mutex);
-	alcor_hw_init(priv);
+	pci_aspm_ctrl(priv, 0);
 	mutex_unlock(&priv->cmd_mutex);
 	return 0;
 }
