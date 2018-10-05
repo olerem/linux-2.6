@@ -414,7 +414,9 @@ static void alcor_pci_remove(struct pci_dev *pdev)
 
 	pci_aspm_ctrl(priv, 1);
 
-	spin_lock(&alcor_pci_lock);
+	mfd_remove_devices(&pcidev->dev);
+
+  spin_lock(&alcor_pci_lock);
 	idr_remove(&alcor_pci_idr, priv->id);
 	spin_unlock(&alcor_pci_lock);
 
