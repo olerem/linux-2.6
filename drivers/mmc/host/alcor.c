@@ -191,7 +191,7 @@ static void alcor_trigger_data_transfer(struct alcor_sdmmc_host *host, bool earl
 		alcor_data_set_dma(host);
 		ctrl |= AU6601_DATA_DMA_MODE;
 		host->dma_on = 1;
-		alcor_write32(priv, (data->sg_count - 1) * 0x1000,
+		alcor_write32(priv, data->sg_count * 0x1000,
 			       AU6601_REG_BLOCK_SIZE);
 	} else {
 		alcor_write32(priv, data->blksz, AU6601_REG_BLOCK_SIZE);
@@ -510,6 +510,7 @@ static int alcor_data_irq_done(struct alcor_sdmmc_host *host, u32 intmask)
 		break;
 	case AU6601_INT_DMA_END:
 		if (!host->sg_count) {
+			alcor_write32(priv, 0, AU6601_REG_SDMA_ADDR);
 			break;
 		}
 
