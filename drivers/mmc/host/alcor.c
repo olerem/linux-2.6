@@ -468,6 +468,7 @@ static void alcor_cmd_irq_thread(struct alcor_sdmmc_host *host, u32 intmask)
 
 static int alcor_data_irq_done(struct alcor_sdmmc_host *host, u32 intmask)
 {
+	struct alcor_pci_priv *priv = host->alcor_pci;
 	u32 tmp;
 
 	intmask &= AU6601_INT_DATA_MASK;
