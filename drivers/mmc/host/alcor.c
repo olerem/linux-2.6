@@ -1015,14 +1015,14 @@ static void alcor_hw_init(struct alcor_sdmmc_host *host)
 	struct alcor_pci_priv *priv = host->alcor_pci;
 	struct alcor_dev_cfg *cfg = priv->cfg;
 
-	alcor_reset(priv, AU6601_RESET_CMD);
+	alcor_reset(host, AU6601_RESET_CMD);
 
 	alcor_write8(priv, 0, AU6601_DMA_BOUNDARY);
 	alcor_write8(priv, AU6601_SD_CARD, AU6601_ACTIVE_CTRL);
 
 	alcor_write8(priv, 0, AU6601_REG_BUS_CTRL);
 
-	alcor_reset(priv, AU6601_RESET_DATA);
+	alcor_reset(host, AU6601_RESET_DATA);
 	alcor_write8(priv, 0, AU6601_DMA_BOUNDARY);
 
 	alcor_write8(priv, 0, AU6601_INTERFACE_MODE_CTRL);
@@ -1038,15 +1038,15 @@ static void alcor_hw_init(struct alcor_sdmmc_host *host)
 
 	alcor_write8(priv, AU6601_DETECT_EN, AU6601_DETECT_STATUS);
 	/* now we should be safe to enable IRQs */
-	alcor_unmask_sd_irqs(priv);
+	alcor_unmask_sd_irqs(host);
 }
 
 static void alcor_hw_uninit(struct alcor_sdmmc_host *host)
 {
 	struct alcor_pci_priv *priv = host->alcor_pci;
 
-	alcor_mask_sd_irqs(priv);
-	alcor_reset(priv, AU6601_RESET_CMD | AU6601_RESET_DATA);
+	alcor_mask_sd_irqs(host);
+	alcor_reset(host, AU6601_RESET_CMD | AU6601_RESET_DATA);
 
 	alcor_write8(priv, 0, AU6601_DETECT_STATUS);
 
