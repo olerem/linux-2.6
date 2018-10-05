@@ -519,7 +519,7 @@ static int alcor_data_irq_done(struct alcor_sdmmc_host *host, u32 intmask)
 		break;
 	}
 
-	if (intmask & AU6601_INT_DATA_END || !host->sg_count)
+	if (intmask & AU6601_INT_DATA_END)
 		return 0;
 
 	return 1;
