@@ -416,11 +416,11 @@ static void alcor_pci_remove(struct pci_dev *pdev)
 
 	mfd_remove_devices(&pdev->dev);
 
-  spin_lock(&alcor_pci_lock);
+	spin_lock(&alcor_pci_lock);
 	idr_remove(&alcor_pci_idr, priv->id);
 	spin_unlock(&alcor_pci_lock);
 
-  pci_release_regions(pdev);
+	pci_release_regions(pdev);
 	pci_set_drvdata(pdev, NULL);
 }
 
