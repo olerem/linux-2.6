@@ -468,7 +468,6 @@ static void alcor_cmd_irq_thread(struct alcor_sdmmc_host *host, u32 intmask)
 
 static int alcor_data_irq_done(struct alcor_sdmmc_host *host, u32 intmask)
 {
-	struct alcor_pci_priv *priv = host->alcor_pci;
 	u32 tmp;
 
 	intmask &= AU6601_INT_DATA_MASK;
@@ -510,10 +509,8 @@ static int alcor_data_irq_done(struct alcor_sdmmc_host *host, u32 intmask)
 		return 1;
 		break;
 	case AU6601_INT_DMA_END:
-		if (!host->sg_count) {
-			alcor_write32(priv, 0, AU6601_REG_SDMA_ADDR);
+		if (!host->sg_count)
 			break;
-		}
 
 		alcor_data_set_dma(host);
 		break;
@@ -522,7 +519,7 @@ static int alcor_data_irq_done(struct alcor_sdmmc_host *host, u32 intmask)
 		break;
 	}
 
-	if (intmask & AU6601_INT_DATA_END)
+	if (intmask & AU6601_INT_DATA_END || !host->sg_count)
 		return 0;
 
 	return 1;
