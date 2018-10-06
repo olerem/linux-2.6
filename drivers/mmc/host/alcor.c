@@ -257,10 +257,10 @@ static void alcor_prepare_data(struct alcor_sdmmc_host *host,
 }
 
 static void alcor_send_cmd(struct alcor_sdmmc_host *host,
-						   struct mmc_command *cmd, bool set_timeout)
+			   struct mmc_command *cmd, bool set_timeout)
 {
 	struct alcor_pci_priv *priv = host->alcor_pci;
-	unsigned long timeout;
+	unsigned long timeout = 0;
 	u8 ctrl = 0;
 
 	host->cmd = cmd;
