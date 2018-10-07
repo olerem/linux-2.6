@@ -5,6 +5,11 @@
  * Driver for Alcor Micro AU6601 and AU6621 controllers
  */
 
+/* Note: this driver was created without any documentation. Based
+ * on sniffing, testing and in some cases mimic of original driver.
+ * As soon as some one with documentation or more experience in SD/MMC, or
+ * reverse engineering then me, please review this driver and question every
+ * thing what I did. 2018 Oleksij Rempel <linux@rempel-privat.de> */
 
 #include <linux/delay.h>
 #include <linux/pci.h>
@@ -26,8 +31,8 @@ MODULE_PARM_DESC(use_dma, "Whether to use DMA or not. Default = 1");
 
 enum alcor_cookie {
 	COOKIE_UNMAPPED,
-	COOKIE_PRE_MAPPED,	/* mapped by pre_req() of dwmmc */
-	COOKIE_MAPPED,		/* mapped by prepare_data() of dwmmc */
+	COOKIE_PRE_MAPPED,
+	COOKIE_MAPPED,
 };
 
 struct alcor_pll_conf {
@@ -82,6 +87,8 @@ static inline void alcor_rmw8(struct alcor_sdmmc_host *host, unsigned int addr,
 	alcor_write8(priv, var, addr);
 }
 
+/* As soon as irqs are masked, some status updates may be missed.
+ * Use this with care. */
 static inline void alcor_mask_sd_irqs(struct alcor_sdmmc_host *host)
 {
 	struct alcor_pci_priv *priv = host->alcor_pci;
@@ -96,12 +103,6 @@ static inline void alcor_unmask_sd_irqs(struct alcor_sdmmc_host *host)
 		  AU6601_INT_CARD_INSERT | AU6601_INT_CARD_REMOVE |
 		  AU6601_INT_OVER_CURRENT_ERR,
 		  AU6601_REG_INT_ENABLE);
-}
-
-static inline void alcor_mask_ms_irqs(struct alcor_sdmmc_host *host)
-{
-	struct alcor_pci_priv *priv = host->alcor_pci;
-	alcor_write32(priv, 0, AU6601_MS_INT_ENABLE);
 }
 
 static void alcor_reset(struct alcor_sdmmc_host *host, u8 val)
@@ -808,6 +809,7 @@ static void alcor_pre_req(struct mmc_host *mmc,
 
 	data->host_cookie = COOKIE_UNMAPPED;
 
+	/* FIXME: looks like the DMA engine works only with CMD18 */
 	if (cmd->opcode != 18)
 		return;
 	/*
@@ -869,34 +871,50 @@ static void alcor_set_power_mode(struct mmc_host *mmc, struct mmc_ios *ios)
 		alcor_set_clock(host, ios->clock);
 		/* set all pins to input */
 		alcor_write8(priv, 0, AU6601_OUTPUT_ENABLE);
-		/* turn of Vcc */
+		/* turn of VDD */
 		alcor_write8(priv, 0, AU6601_POWER_CONTROL);
 		break;
 	case MMC_POWER_UP:
 		break;
 	case MMC_POWER_ON:
+		/* This is most trickiest part. The order and timings of
+		 * instructions seems to play important role. Any changes may
+		 * confuse internal state engine if this HW.
+		 * FIXME: If we will ever get access to documentation, then this
+		 * part should be reviewed again. */
+
+		/* enable SD card mode */
 		alcor_write8(priv, AU6601_SD_CARD,
 			      AU6601_ACTIVE_CTRL);
+		/* set signal voltage to 3.3V */
 		alcor_write8(priv, 0, AU6601_OPT);
+		/* no documentation about clk delay, for now just try to mimic
+		 * original driver. */
 		alcor_write8(priv, 0x20, AU6601_CLK_DELAY);
+		/* set BUS width to 1 bit */
 		alcor_write8(priv, 0, AU6601_REG_BUS_CTRL);
+		/* set CLK first time */
 		alcor_set_clock(host, ios->clock);
-		/* set power on Vcc */
+		/* power on VDD */
 		alcor_write8(priv, AU6601_SD_CARD,
 			      AU6601_POWER_CONTROL);
+		/* wait until the CLK will get stable */
 		mdelay(20);
+		/* set CLK again, mimic original driver. */
 		alcor_set_clock(host, ios->clock);
 
+		/* enable output */
 		alcor_write8(priv, AU6601_SD_CARD,
 			      AU6601_OUTPUT_ENABLE);
 		/* The clk will not work on au6621. We need read some thing out */
 		alcor_write8(priv, AU6601_DATA_WRITE,
 			      AU6601_DATA_XFER_CTRL);
+		/* configure timeout. Not clear what exactly it means. */
 		alcor_write8(priv, 0x7d, AU6601_TIME_OUT_CTRL);
 		mdelay(100);
 		break;
 	default:
-		dev_err(host->dev, "Unknown power parametr\n");
+		dev_err(host->dev, "Unknown power parameter\n");
 	}
 }
 
@@ -990,24 +1008,36 @@ static void alcor_hw_init(struct alcor_sdmmc_host *host)
 	struct alcor_pci_priv *priv = host->alcor_pci;
 	struct alcor_dev_cfg *cfg = priv->cfg;
 
+	/* FIXME: This part is a mimics HW init of original driver.
+	 * If we will ever get access to documentation, then this part
+	 * should be reviewed again. */
+
+	/* reset command state engine */
 	alcor_reset(host, AU6601_RESET_CMD);
 
 	alcor_write8(priv, 0, AU6601_DMA_BOUNDARY);
+	/* enable sd card mode */
 	alcor_write8(priv, AU6601_SD_CARD, AU6601_ACTIVE_CTRL);
 
+	/* set BUS width to 1 bit */
 	alcor_write8(priv, 0, AU6601_REG_BUS_CTRL);
 
+	/* reset data state engine */
 	alcor_reset(host, AU6601_RESET_DATA);
+	/* Not sure if a voodoo with AU6601_DMA_BOUNDARY is really needed */
 	alcor_write8(priv, 0, AU6601_DMA_BOUNDARY);
 
 	alcor_write8(priv, 0, AU6601_INTERFACE_MODE_CTRL);
+	/* not clear what we are doing here. */
 	alcor_write8(priv, 0x44, AU6601_PAD_DRIVE0);
 	alcor_write8(priv, 0x44, AU6601_PAD_DRIVE1);
 	alcor_write8(priv, 0x00, AU6601_PAD_DRIVE2);
 
-	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt */
+	/* for 6601 - dma_boundary; for 6621 - dma_page_cnt
+	 * exact meaning of this register is not clear. */
 	alcor_write8(priv, cfg->dma, AU6601_DMA_BOUNDARY);
 
+	/* make sure all pins are set to input and VDD is off */
 	alcor_write8(priv, 0, AU6601_OUTPUT_ENABLE);
 	alcor_write8(priv, 0, AU6601_POWER_CONTROL);
 
