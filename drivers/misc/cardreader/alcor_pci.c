@@ -148,7 +148,7 @@ u32 alcor_read32be(struct alcor_pci_priv *priv, unsigned int addr)
 }
 EXPORT_SYMBOL_GPL(alcor_read32be);
 
-static int pci_find_cap_offset(struct alcor_pci_priv *priv, struct pci_dev *pci)
+static int alcor_pci_find_cap_offset(struct alcor_pci_priv *priv, struct pci_dev *pci)
 {
 	int where;
 	u8 val8;
@@ -164,7 +164,7 @@ static int pci_find_cap_offset(struct alcor_pci_priv *priv, struct pci_dev *pci)
 	while (1) {
 		pci_read_config_dword(pci, where, &val32);
 		if (val32 == 0xffffffff) {
-			dev_dbg(priv->dev, "pci_find_cap_offset invailid value %x.\n", val32);
+			dev_dbg(priv->dev, "alcor_pci_find_cap_offset invailid value %x.\n", val32);
 			return 0;
 		}
 
@@ -174,7 +174,7 @@ static int pci_find_cap_offset(struct alcor_pci_priv *priv, struct pci_dev *pci)
 		}
 
 		if ((val32 & 0xff00) == 0x00) {
-			dev_dbg(priv->dev, "pci_find_cap_offset invailid value %x.\n", val32);
+			dev_dbg(priv->dev, "alcor_pci_find_cap_offset invailid value %x.\n", val32);
 			break;
 		}
 		where = (int)((val32 >> 8) & 0xff);
@@ -183,16 +183,16 @@ static int pci_find_cap_offset(struct alcor_pci_priv *priv, struct pci_dev *pci)
 	return 0;
 }
 
-static void pci_init_check_aspm(struct alcor_pci_priv *priv)
+static void alcor_pci_init_check_aspm(struct alcor_pci_priv *priv)
 {
 	struct pci_dev *pci;
 	int where;
 	u32 val32;
 
-	dev_dbg(priv->dev, "pci_init_check_aspm\n");
+	dev_dbg(priv->dev, "alcor_pci_init_check_aspm\n");
 
-	priv->pdev_cap_off    = pci_find_cap_offset(priv, priv->pdev);
-	priv->parent_cap_off = pci_find_cap_offset(priv, priv->parent_pdev);
+	priv->pdev_cap_off    = alcor_pci_find_cap_offset(priv, priv->pdev);
+	priv->parent_cap_off = alcor_pci_find_cap_offset(priv, priv->parent_pdev);
 
 	if ((priv->pdev_cap_off == 0) || (priv->parent_cap_off == 0)) {
 		dev_dbg(priv->dev, "pci_cap_off: %x, parent_cap_off: %x\n",
@@ -226,14 +226,14 @@ static void pci_init_check_aspm(struct alcor_pci_priv *priv)
 	return;
 }
 
-static void pci_aspm_ctrl(struct alcor_pci_priv *priv, u8 aspm_enable)
+static void alcor_pci_aspm_ctrl(struct alcor_pci_priv *priv, u8 aspm_enable)
 {
 	struct pci_dev *pci;
 	u8 aspm_ctrl, i;
 	int where;
 	u32 val32;
 
-	dev_dbg(priv->dev, "pci_aspm_ctrl, aspm_enable: %x\n", aspm_enable);
+	dev_dbg(priv->dev, "alcor_pci_aspm_ctrl, aspm_enable: %x\n", aspm_enable);
 
 	if ((priv->pdev_cap_off == 0) || (priv->parent_cap_off == 0)) {
 		dev_dbg(priv->dev, "pci_cap_off: %x, parent_cap_off: %x\n",
@@ -362,7 +362,7 @@ static int alcor_pci_probe(struct pci_dev *pdev,
 
 	pci_set_master(pdev);
 	pci_set_drvdata(pdev, priv);
-	pci_init_check_aspm(priv);
+	alcor_pci_init_check_aspm(priv);
 
 	for (i = 0; i < ARRAY_SIZE(alcor_pci_cells); i++) {
 		alcor_pci_cells[i].platform_data = priv;
@@ -373,7 +373,7 @@ static int alcor_pci_probe(struct pci_dev *pdev,
 	if (ret < 0)
 		goto error_release_regions;
 
-	pci_aspm_ctrl(priv, 0);
+	alcor_pci_aspm_ctrl(priv, 0);
 
 	return 0;
 
@@ -388,7 +388,7 @@ static void alcor_pci_remove(struct pci_dev *pdev)
 
 	priv = pci_get_drvdata(pdev);
 
-	pci_aspm_ctrl(priv, 1);
+	alcor_pci_aspm_ctrl(priv, 1);
 
 	mfd_remove_devices(&pdev->dev);
 
@@ -406,7 +406,7 @@ static int alcor_suspend(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct alcor_pci_priv *priv = pci_get_drvdata(pdev);
 
-	pci_aspm_ctrl(priv, 1);
+	alcor_pci_aspm_ctrl(priv, 1);
 	return 0;
 }
 
@@ -416,7 +416,7 @@ static int alcor_resume(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct alcor_pci_priv *priv = pci_get_drvdata(pdev);
 
-	pci_aspm_ctrl(priv, 0);
+	alcor_pci_aspm_ctrl(priv, 0);
 	return 0;
 }
 #endif /* CONFIG_PM_SLEEP */
