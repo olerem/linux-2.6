@@ -1069,8 +1069,8 @@ static void alcor_init_mmc(struct alcor_sdmmc_host *host)
 	mmc->f_max = AU6601_MAX_CLOCK;
 	mmc->ocr_avail = MMC_VDD_33_34;
 	mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SD_HIGHSPEED
-		| MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 | MMC_CAP_UHS_SDR50
-		| MMC_CAP_UHS_SDR104 | MMC_CAP_UHS_DDR50;
+		| MMC_CAP_UHS_SDR104 | MMC_CAP_UHS_DDR50
+		| MMC_CAP_BUS_WIDTH_TEST;
 	mmc->caps2 = MMC_CAP2_NO_SDIO;
 	mmc->ops = &alcor_sdc_ops;
 
