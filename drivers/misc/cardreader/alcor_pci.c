@@ -243,8 +243,6 @@ static int alcor_pci_probe(struct pci_dev *pdev,
 	struct alcor_pci_priv *priv;
 	int ret, i, bar = 0;
 
-	dev_info(&pdev->dev, "AU6601 controller found [%04x:%04x] (rev %x)\n",
-		 (int)pdev->vendor, (int)pdev->device, (int)pdev->revision);
 	cfg = (void *)ent->driver_data;
 
 	ret = pcim_enable_device(pdev);
