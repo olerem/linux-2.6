@@ -145,7 +145,6 @@ static void alcor_data_set_dma(struct alcor_sdmmc_host *host)
 	addr = (u32)sg_dma_address(host->sg);
 	len = sg_dma_len(host->sg);
 
-	dev_dbg(host->dev, "%s 0x%08x\n", __func__, addr);
 	alcor_write32(priv, addr, AU6601_REG_SDMA_ADDR);
 	host->sg = sg_next(host->sg);
 	host->sg_count--;
@@ -157,8 +156,6 @@ static void alcor_trigger_data_transfer(struct alcor_sdmmc_host *host,
 	struct alcor_pci_priv *priv = host->alcor_pci;
 	struct mmc_data *data = host->data;
 	u8 ctrl = 0;
-
-	dev_dbg(host->dev, "%s\n", __func__);
 
 	if (data->flags & MMC_DATA_WRITE)
 		ctrl |= AU6601_DATA_WRITE;
@@ -192,7 +189,6 @@ static void alcor_trf_block_pio(struct alcor_sdmmc_host *host, bool read)
 
 	if (!host->blocks)
 		return;
-	dev_dbg(host->dev, "%s\n", __func__);
 
 	if (host->dma_on) {
 		dev_err(host->dev, "configured DMA but got PIO request.\n");
@@ -322,10 +318,8 @@ static void alcor_request_complete(struct alcor_sdmmc_host *host,
 	 * If this tasklet gets rescheduled while running, it will
 	 * be run again afterwards but without any active request.
 	 */
-	if (!host->mrq) {
-		dev_dbg(host->dev, "nothing to complete\n");
+	if (!host->mrq)
 		return;
-	}
 
 	if (cancel_timeout)
 		cancel_delayed_work(&host->timeout_work);
@@ -337,7 +331,6 @@ static void alcor_request_complete(struct alcor_sdmmc_host *host,
 	host->data = NULL;
 	host->dma_on = 0;
 
-	dev_dbg(host->dev, "request complete\n");
 	mmc_request_done(host->mmc, mrq);
 }
 
@@ -349,7 +342,6 @@ static void alcor_finish_data(struct alcor_sdmmc_host *host)
 	host->data = NULL;
 	host->dma_on = 0;
 
-	dev_dbg(host->dev, "Finish DATA\n");
 	/*
 	 * The specification states that the block count register must
 	 * be updated, but it does not specify at what point in the
@@ -425,8 +417,6 @@ static int alcor_cmd_irq_done(struct alcor_sdmmc_host *host, u32 intmask)
 	if (!host->cmd)
 		return false;
 
-	dev_dbg(host->dev, "%s %x\n", __func__, intmask);
-
 	if (host->cmd->flags & MMC_RSP_PRESENT) {
 		struct mmc_command *cmd = host->cmd;
 
@@ -464,12 +454,9 @@ static void alcor_cmd_irq_thread(struct alcor_sdmmc_host *host, u32 intmask)
 		return;
 
 	if (!host->cmd && intmask & AU6601_INT_CMD_END) {
-		dev_dbg(host->dev,
-			"Got command interrupt 0x%08x even though no command operation was in progress.\n",
+		dev_dbg(host->dev, "Got command interrupt 0x%08x even though no command operation was in progress.\n",
 			intmask);
 	}
-
-	dev_dbg(host->dev, "%s %x\n", __func__, intmask);
 
 	/* Processed actual command. */
 	if (!host->data)
@@ -488,8 +475,6 @@ static int alcor_data_irq_done(struct alcor_sdmmc_host *host, u32 intmask)
 	/* nothing here to do */
 	if (!intmask)
 		return 1;
-
-	dev_dbg(host->dev, "%s %x\n", __func__, intmask);
 
 	/* we was too fast and got DATA_END after it was processed?
 	 * lets ignore it for now.
@@ -542,11 +527,8 @@ static void alcor_data_irq_thread(struct alcor_sdmmc_host *host, u32 intmask)
 	if (!intmask)
 		return;
 
-	dev_dbg(host->dev, "DATA thread IRQ %x\n", intmask);
-
 	if (!host->data) {
-		dev_dbg(host->dev,
-			"Got data interrupt 0x%08x even though no data operation was in progress.\n",
+		dev_dbg(host->dev, "Got data interrupt 0x%08x even though no data operation was in progress.\n",
 			intmask);
 		alcor_reset(host, AU6601_RESET_DATA);
 		return;
@@ -566,8 +548,7 @@ static void alcor_cd_irq(struct alcor_sdmmc_host *host, u32 intmask)
 		intmask & AU6601_INT_CARD_REMOVE ? "removed" : "inserted");
 
 	if (host->mrq) {
-		dev_dbg(host->dev,
-			"cancel all pending tasks.\n");
+		dev_dbg(host->dev, "cancel all pending tasks.\n");
 
 		if (host->data)
 			host->data->error = -ENOMEDIUM;
@@ -595,13 +576,10 @@ static irqreturn_t alcor_irq_thread(int irq, void *d)
 
 	/* some thing bad */
 	if (unlikely(!intmask || AU6601_INT_ALL_MASK == intmask)) {
-		dev_dbg(host->dev, "unexpected IRQ: 0x%04x\n",
-			 intmask);
+		dev_dbg(host->dev, "unexpected IRQ: 0x%04x\n", intmask);
 		ret = IRQ_NONE;
 		goto exit;
 	}
-
-	dev_dbg(host->dev, "IRQ %x\n", intmask);
 
 	tmp = intmask & (AU6601_INT_CMD_MASK | AU6601_INT_DATA_MASK);
 	if (tmp) {
@@ -745,7 +723,6 @@ static int alcor_card_busy(struct mmc_host *mmc)
 	struct alcor_pci_priv *priv = host->alcor_pci;
 	u8 status;
 
-	dev_dbg(host->dev, "%s:%i\n", __func__, __LINE__);
 	/* Check whether dat[0:3] low */
 	status = alcor_read8(priv, AU6601_DATA_PIN_STATE);
 
@@ -772,7 +749,6 @@ static int alcor_get_ro(struct mmc_host *mmc)
 
 	/* get write protect pin status */
 	status = alcor_read8(priv, AU6601_INTERFACE_MODE_CTRL);
-	dev_dbg(host->dev, "get write protect status %x\n", status);
 
 	return !!(status & AU6601_SD_CARD_WP);
 }
@@ -783,14 +759,12 @@ static void alcor_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	mutex_lock(&host->cmd_mutex);
 
-	dev_dbg(host->dev, "got request\n");
 	host->mrq = mrq;
 
 	/* check if card is present then send command and data */
 	if (alcor_get_cd(mmc))
 		alcor_send_cmd(host, mrq->cmd, true);
 	else {
-		dev_dbg(host->dev, "card is not present\n");
 		mrq->cmd->error = -ENOMEDIUM;
 		alcor_request_complete(host, 1);
 	}
@@ -831,7 +805,6 @@ static void alcor_pre_req(struct mmc_host *mmc,
 			return;
 	}
 
-	dev_dbg(host->dev, "do pre request\n");
 	/* This data might be unmapped at this time */
 
 	sg_len = dma_map_sg(host->dev, data->sg, data->sg_len,
@@ -851,8 +824,6 @@ static void alcor_post_req(struct mmc_host *mmc,
 
 	if (!host->use_dma || !data)
 		return;
-
-	dev_dbg(host->dev, "do post request\n");
 
 	if (data->host_cookie == COOKIE_MAPPED) {
 		dma_unmap_sg(host->dev,
@@ -953,7 +924,6 @@ static int alcor_signal_voltage_switch(struct mmc_host *mmc,
 
 	mutex_lock(&host->cmd_mutex);
 
-	dev_dbg(host->dev, "%s:%i\n", __func__, __LINE__);
 	switch (ios->signal_voltage) {
 	case MMC_SIGNAL_VOLTAGE_330:
 		alcor_rmw8(host, AU6601_OPT, AU6601_OPT_SD_18V, 0);
@@ -990,8 +960,7 @@ static void alcor_timeout_timer(struct work_struct *work)
 
 	dev_dbg(host->dev, "triggered timeout\n");
 	if (host->mrq) {
-		dev_err(host->dev,
-			"Timeout waiting for hardware interrupt.\n");
+		dev_err(host->dev, "Timeout waiting for hardware interrupt.\n");
 
 		if (host->data) {
 			host->data->error = -ETIMEDOUT;
