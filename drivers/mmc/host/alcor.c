@@ -1144,6 +1144,33 @@ static int alcor_pci_sdmmc_drv_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+static int alcor_pci_sdmmc_suspend(struct platform_device *pdev,
+				   pm_message_t state)
+{
+	struct alcor_sdmmc_host *host = platform_get_drvdata(pdev);
+
+	if (cancel_delayed_work_sync(&host->timeout_work))
+		alcor_request_complete(host, 0);
+
+	alcor_hw_uninit(host);
+
+	return 0;
+}
+
+static int alcor_pci_sdmmc_resume(struct platform_device *pdev)
+{
+	struct alcor_sdmmc_host *host = platform_get_drvdata(pdev);
+
+	alcor_hw_init(host);
+
+	return 0;
+}
+#else
+#define alcor_pci_sdmmc_suspend NULL
+#define alcor_pci_sdmmc_resume NULL
+#endif
+
 static const struct platform_device_id alcor_pci_sdmmc_ids[] = {
 	{
 		.name = DRV_NAME_ALCOR_PCI_SDMMC,
@@ -1156,7 +1183,9 @@ MODULE_DEVICE_TABLE(platform, alcor_pci_sdmmc_ids);
 static struct platform_driver alcor_pci_sdmmc_driver = {
 	.probe		= alcor_pci_sdmmc_drv_probe,
 	.remove		= alcor_pci_sdmmc_drv_remove,
-	.id_table       = alcor_pci_sdmmc_ids,
+	.suspend	= alcor_pci_sdmmc_suspend,
+	.resume		= alcor_pci_sdmmc_resume,
+	.id_table	= alcor_pci_sdmmc_ids,
 	.driver		= {
 		.name	= DRV_NAME_ALCOR_PCI_SDMMC,
 	},
