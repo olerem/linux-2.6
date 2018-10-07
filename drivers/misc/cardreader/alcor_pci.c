@@ -46,107 +46,45 @@ static const struct pci_device_id pci_ids[] = {
 };
 MODULE_DEVICE_TABLE(pci, pci_ids);
 
-static void alcor_reg_decode(int write, int size, u32 val,
-			      unsigned int addr_short)
-{
-	const char *reg;
-
-	switch (addr_short) {
-	case 0x00: reg = "SDMA_ADDR"; break;
-	case 0x05: reg = "DMA_BOUNDARY"; break;
-	case 0x08: reg = "PIO_BUFFER"; break;
-	case 0x0c: reg = "DMA_CTRL"; break;
-	case 0x23: reg = "CMD_OPCODE"; break;
-	case 0x24: reg = "CMD_ARG"; break;
-	case 0x30: reg = "CMD_RSP0"; break;
-	case 0x34: reg = "CMD_RSP1"; break;
-	case 0x38: reg = "CMD_RSP2"; break;
-	case 0x3C: reg = "CMD_RSP3"; break;
-	case 0x69: reg = "TIME_OUT_CTRL"; break;
-	case 0x6c: reg = "BLOCK_SIZE"; break;
-	case 0x70: reg = "POWER_CONTROL"; break;
-	case 0x72: reg = "CLK_SELECT"; break;
-	case 0x73: reg = "CLK_DIVIDER"; break;
-	case 0x74: reg = "INTERFACE_MODE_CTRL"; break;
-	case 0x75: reg = "ACTIVE_CTRL"; break;
-	case 0x76: reg = "DETECT_STATUS"; break;
-	case 0x79: reg = "SW_RESE"; break;
-	case 0x7a: reg = "OUTPUT_ENABLE"; break;
-	case 0x7b: reg = "PAD_DRIVE0"; break;
-	case 0x7c: reg = "PAD_DRIVE1"; break;
-	case 0x7d: reg = "PAD_DRIVE2"; break;
-	case 0x7f: reg = "EEPROM"; break;
-	case 0x81: reg = "CMD_XFER_CTRL"; break;
-	case 0x82: reg = "BUS_CTRL"; break;
-	case 0x83: reg = "DATA_XFER_CTRL"; break;
-	case 0x84: reg = "DATA_PIN_STATE"; break;
-	case 0x85: reg = "OPT"; break;
-	case 0x86: reg = "CLK_DELAY"; break;
-	case 0x90: reg = "INT_STATUS"; break;
-	case 0x94: reg = "INT_ENABLE"; break;
-	case 0xa0: reg = "MS_STATUS"; break;
-	default: reg = "unkn"; break;
-	}
-
-	pr_debug("%s.%i: 0x%02x 0x%08x (%s)\n", write ? "> w" : "< r",
-		 size, addr_short, val, reg);
-}
-
 void alcor_write8(struct alcor_pci_priv *priv, u8 val, unsigned int addr)
 {
-	alcor_reg_decode(1, 1, val, addr);
 	writeb(val, priv->iobase + addr);
 }
 EXPORT_SYMBOL_GPL(alcor_write8);
 
 void alcor_write16(struct alcor_pci_priv *priv, u16 val, unsigned int addr)
 {
-	alcor_reg_decode(1, 2, val, addr);
 	writew(val, priv->iobase + addr);
 }
 EXPORT_SYMBOL_GPL(alcor_write16);
 
 void alcor_write32(struct alcor_pci_priv *priv, u32 val, unsigned int addr)
 {
-	alcor_reg_decode(1, 4, val, addr);
 	writel(val, priv->iobase + addr);
 }
 EXPORT_SYMBOL_GPL(alcor_write32);
 
 void alcor_write32be(struct alcor_pci_priv *priv, u32 val, unsigned int addr)
 {
-	alcor_reg_decode(1, 4, val, addr);
 	iowrite32be(val, priv->iobase + addr);
 }
 EXPORT_SYMBOL_GPL(alcor_write32be);
 
 u8 alcor_read8(struct alcor_pci_priv *priv, unsigned int addr)
 {
-	u8 val;
-
-	val = readb(priv->iobase + addr);
-	alcor_reg_decode(0, 1, val, addr);
-	return val;
+	return readb(priv->iobase + addr);
 }
 EXPORT_SYMBOL_GPL(alcor_read8);
 
 u32 alcor_read32(struct alcor_pci_priv *priv, unsigned int addr)
 {
-	u32 val;
-
-	val = readl(priv->iobase + addr);
-	alcor_reg_decode(0, 4, val, addr);
-	return val;
+	return readl(priv->iobase + addr);
 }
 EXPORT_SYMBOL_GPL(alcor_read32);
 
 u32 alcor_read32be(struct alcor_pci_priv *priv, unsigned int addr)
 {
-	u32 val;
-
-	val = ioread32be(priv->iobase + addr);
-	alcor_reg_decode(0, 4, val, addr);
-	return val;
+	return ioread32be(priv->iobase + addr);
 }
 EXPORT_SYMBOL_GPL(alcor_read32be);
 
