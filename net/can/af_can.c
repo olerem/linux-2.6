@@ -217,7 +217,7 @@ int can_send(struct sk_buff *skb, int loop)
 {
 	struct sk_buff *newskb = NULL;
 	struct canfd_frame *cfd = (struct canfd_frame *)skb->data;
-	struct s_stats *can_stats = dev_net(skb->dev)->can.can_stats;
+	struct can_pkg_stats *can_stats = dev_net(skb->dev)->can.can_stats;
 	int err = -EINVAL;
 
 	if (skb->len == CAN_MTU) {
@@ -465,7 +465,7 @@ int can_rx_register(struct net *net, struct net_device *dev, canid_t can_id,
 	struct receiver *r;
 	struct hlist_head *rl;
 	struct can_dev_rcv_lists *d;
-	struct s_pstats *can_pstats = net->can.can_pstats;
+	struct can_rcv_lists_stats *can_pstats = net->can.can_pstats;
 	int err = 0;
 
 	/* insert new receiver  (dev,canid,mask) -> (func,data) */
@@ -541,7 +541,7 @@ void can_rx_unregister(struct net *net, struct net_device *dev, canid_t can_id,
 {
 	struct receiver *r = NULL;
 	struct hlist_head *rl;
-	struct s_pstats *can_pstats = net->can.can_pstats;
+	struct can_rcv_lists_stats *can_pstats = net->can.can_pstats;
 	struct can_dev_rcv_lists *d;
 
 	if (dev && dev->type != ARPHRD_CAN)
@@ -684,7 +684,7 @@ static void can_receive(struct sk_buff *skb, struct net_device *dev)
 {
 	struct can_dev_rcv_lists *d;
 	struct net *net = dev_net(dev);
-	struct s_stats *can_stats = net->can.can_stats;
+	struct can_pkg_stats *can_stats = net->can.can_stats;
 	int matches;
 
 	/* update statistics */
@@ -869,10 +869,10 @@ static int can_pernet_init(struct net *net)
 		kzalloc(sizeof(struct can_dev_rcv_lists), GFP_KERNEL);
 	if (!net->can.can_rx_alldev_list)
 		goto out;
-	net->can.can_stats = kzalloc(sizeof(struct s_stats), GFP_KERNEL);
+	net->can.can_stats = kzalloc(sizeof(struct can_pkg_stats), GFP_KERNEL);
 	if (!net->can.can_stats)
 		goto out_free_alldev_list;
-	net->can.can_pstats = kzalloc(sizeof(struct s_pstats), GFP_KERNEL);
+	net->can.can_pstats = kzalloc(sizeof(struct can_rcv_lists_stats), GFP_KERNEL);
 	if (!net->can.can_pstats)
 		goto out_free_can_stats;
 
