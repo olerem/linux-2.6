@@ -18,6 +18,9 @@
 
 struct can_ml_priv {
 	struct can_dev_rcv_lists dev_rcv_lists;
+#ifdef CAN_J1939
+	struct j1939_priv *j1939_priv;
+#endif
 };
 
 #endif /* CAN_ML_H */
