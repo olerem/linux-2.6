@@ -358,7 +358,7 @@ static int alcor_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
-static SIMPLE_DEV_PM_OPS(alcor_pm_ops, alcor_suspend, alcor_resume);
+static SIMPLE_DEV_PM_OPS(alcor_pci_pm_ops, alcor_suspend, alcor_resume);
 
 static struct pci_driver alcor_driver = {
 	.name	=	DRV_NAME_ALCOR_PCI,
@@ -366,7 +366,7 @@ static struct pci_driver alcor_driver = {
 	.probe	=	alcor_pci_probe,
 	.remove =	alcor_pci_remove,
 	.driver	=	{
-		.pm	= &alcor_pm_ops
+		.pm	= &alcor_pci_pm_ops
 	},
 };
 
