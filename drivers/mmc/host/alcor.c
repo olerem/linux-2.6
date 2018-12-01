@@ -310,7 +310,7 @@ static void alcor_request_complete(struct alcor_sdmmc_host *host,
 	struct mmc_request *mrq;
 
 	/*
-	 * If this tasklet gets rescheduled while running, it will
+	 * If this work gets rescheduled while running, it will
 	 * be run again afterwards but without any active request.
 	 */
 	if (!host->mrq)
@@ -1114,7 +1114,7 @@ static int alcor_pci_sdmmc_drv_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int alcor_pci_sdmmc_suspend(struct platform_device *pdev,
 				   pm_message_t state)
 {
@@ -1136,10 +1136,10 @@ static int alcor_pci_sdmmc_resume(struct platform_device *pdev)
 
 	return 0;
 }
-#else
-#define alcor_pci_sdmmc_suspend NULL
-#define alcor_pci_sdmmc_resume NULL
-#endif
+#endif /* CONFIG_PM_SLEEP */
+
+static SIMPLE_DEV_PM_OPS(alcor_mmc_pm_ops, alcor_pci_sdmmc_suspend,
+			 alcor_pci_sdmmc_resume);
 
 static const struct platform_device_id alcor_pci_sdmmc_ids[] = {
 	{
@@ -1158,6 +1158,7 @@ static struct platform_driver alcor_pci_sdmmc_driver = {
 	.id_table	= alcor_pci_sdmmc_ids,
 	.driver		= {
 		.name	= DRV_NAME_ALCOR_PCI_SDMMC,
+		.pm	= &alcor_mmc_pm_ops
 	},
 };
 module_platform_driver(alcor_pci_sdmmc_driver);
