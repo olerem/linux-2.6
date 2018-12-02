@@ -1153,8 +1153,6 @@ MODULE_DEVICE_TABLE(platform, alcor_pci_sdmmc_ids);
 static struct platform_driver alcor_pci_sdmmc_driver = {
 	.probe		= alcor_pci_sdmmc_drv_probe,
 	.remove		= alcor_pci_sdmmc_drv_remove,
-	.suspend	= alcor_pci_sdmmc_suspend,
-	.resume		= alcor_pci_sdmmc_resume,
 	.id_table	= alcor_pci_sdmmc_ids,
 	.driver		= {
 		.name	= DRV_NAME_ALCOR_PCI_SDMMC,
