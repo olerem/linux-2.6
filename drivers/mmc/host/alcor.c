@@ -1095,14 +1095,14 @@ static int alcor_pci_sdmmc_drv_probe(struct platform_device *pdev)
 	alcor_init_mmc(host);
 	alcor_hw_init(host);
 
-	platform_set_drvdata(pdev, host);
+	dev_set_drvdata(dev, host);
 	mmc_add_host(mmc);
 	return 0;
 }
 
 static int alcor_pci_sdmmc_drv_remove(struct platform_device *pdev)
 {
-	struct alcor_sdmmc_host *host = platform_get_drvdata(pdev);
+	struct alcor_sdmmc_host *host = dev_get_drvdata(&pdev->dev);
 
 	if (cancel_delayed_work_sync(&host->timeout_work))
 		alcor_request_complete(host, 0);
@@ -1115,10 +1115,9 @@ static int alcor_pci_sdmmc_drv_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int alcor_pci_sdmmc_suspend(struct platform_device *pdev,
-				   pm_message_t state)
+static int alcor_pci_sdmmc_suspend(struct device *dev)
 {
-	struct alcor_sdmmc_host *host = platform_get_drvdata(pdev);
+	struct alcor_sdmmc_host *host = dev_get_drvdata(dev);
 
 	if (cancel_delayed_work_sync(&host->timeout_work))
 		alcor_request_complete(host, 0);
@@ -1128,9 +1127,9 @@ static int alcor_pci_sdmmc_suspend(struct platform_device *pdev,
 	return 0;
 }
 
-static int alcor_pci_sdmmc_resume(struct platform_device *pdev)
+static int alcor_pci_sdmmc_resume(struct device *dev)
 {
-	struct alcor_sdmmc_host *host = platform_get_drvdata(pdev);
+	struct alcor_sdmmc_host *host = dev_get_drvdata(dev);
 
 	alcor_hw_init(host);
 
