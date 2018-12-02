@@ -17,8 +17,7 @@
 
 #include <linux/alcor_pci.h>
 
-static DEFINE_IDR(alcor_pci_idr);
-static DEFINE_SPINLOCK(alcor_pci_lock);
+static DEFINE_IDA(alcor_pci_idr);
 
 static struct mfd_cell alcor_pci_cells[] = {
 	[ALCOR_SD_CARD] = {
@@ -253,15 +252,10 @@ static int alcor_pci_probe(struct pci_dev *pdev,
 	if (!priv)
 		return -ENOMEM;
 
-	idr_preload(GFP_KERNEL);
-	spin_lock(&alcor_pci_lock);
-	ret = idr_alloc(&alcor_pci_idr, priv, 0, 0, GFP_NOWAIT);
-	if (ret >= 0)
-		priv->id = ret;
-	spin_unlock(&alcor_pci_lock);
-	idr_preload_end();
+	ret = ida_simple_get(&alcor_pci_idr, 0, 0, GFP_KERNEL);
 	if (ret < 0)
 		return ret;
+	priv->id = ret;
 
 	priv->pdev = pdev;
 	priv->parent_pdev = pdev->bus->self;
@@ -329,9 +323,7 @@ static void alcor_pci_remove(struct pci_dev *pdev)
 
 	mfd_remove_devices(&pdev->dev);
 
-	spin_lock(&alcor_pci_lock);
-	idr_remove(&alcor_pci_idr, priv->id);
-	spin_unlock(&alcor_pci_lock);
+	ida_simple_remove(&alcor_pci_idr, priv->id);
 
 	pci_release_regions(pdev);
 	pci_set_drvdata(pdev, NULL);
