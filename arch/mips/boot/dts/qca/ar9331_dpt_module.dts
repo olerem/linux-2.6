@@ -74,5 +74,56 @@
 		compatible = "winbond,w25q128", "jedec,spi-nor";
 		spi-max-frequency = <104000000>;
 		reg = <0>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			uboot:	partition@0 {
+				label = "u-boot";
+				reg = <0x000000 0x020000>;
+				read-only;
+			};
+
+			partition@20000 {
+				compatible = "tplink,firmware";
+				label = "firmware";
+				reg = <0x020000 0x3c0000>;
+			};
+
+			partition@3e0000 {
+				label = "config";
+				reg = <0x3e0000 0x010000>;
+				read-only;
+			};
+
+			art: partition@3f0000 {
+				label = "art";
+				reg = <0x3f0000 0x010000>;
+				read-only;
+			};
+		};
+
+
 	};
 };
+
+&eth0 {
+	status = "okay";
+
+	mtd-mac-address = <&uboot 0x1fc00>;
+	gmac-config {
+		device = <&gmac>;
+
+		switch-phy-addr-swap = <0>;
+		switch-phy-swap = <0>;
+	};
+};
+
+&eth1 {
+	status = "okay";
+	compatible = "syscon", "simple-mfd";
+};
+
+
