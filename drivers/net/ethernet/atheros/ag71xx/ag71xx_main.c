@@ -1430,7 +1430,7 @@ static int ag71xx_probe(struct platform_device *pdev)
 	}
 
 	dev->netdev_ops = &ag71xx_netdev_ops;
-	dev->ethtool_ops = &ag71xx_ethtool_ops;
+	//dev->ethtool_ops = &ag71xx_ethtool_ops;
 
 	INIT_DELAYED_WORK(&ag->restart_work, ag71xx_restart_work_func);
 
