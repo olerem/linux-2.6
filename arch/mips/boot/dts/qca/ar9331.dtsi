@@ -126,6 +126,9 @@
 			clocks = <&pll ATH79_CLK_AHB>, <&pll ATH79_CLK_AHB>;
 			clock-names = "eth", "mdio";
 
+			phy-mode = "mii";
+			phy-handle = <&swphy4>;
+
 			status = "disabled";
 		};
 
@@ -133,13 +136,39 @@
 			compatible = "qca,ar9330-eth";
 			reg = <0x1a000000 0x200>;
 			interrupts = <5>;
-
 			resets = <&rst 13>, <&rst 23>;
 			reset-names = "mac", "mdio";
 			clocks = <&pll ATH79_CLK_AHB>, <&pll ATH79_CLK_AHB>;
 			clock-names = "eth", "mdio";
 
 			status = "disabled";
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			phy-mode = "gmii";
+
+			fixed-link {
+				speed = <1000>;
+				full-duplex;
+			};
+
+			builtin_switch: switch0@1f {
+				compatible = "qca,ar8216-builtin";
+				reg = <0x1f>;
+				resets = <&rst 8>;
+				reset-names = "switch";
+
+				mdio-bus {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					swphy4: ethernet-phy@4 {
+						reg = <4>;
+						phy-mode = "mii";
+					};
+				};
+			};
 		};
 
 		usb: usb@1b000100 {
