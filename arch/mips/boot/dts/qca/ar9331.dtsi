@@ -97,6 +97,13 @@
 				#clock-cells = <1>;
 			};
 
+			gpt0: gpt@18060000 {
+				compatible = "qca,ar9331-gpt";
+				reg = <0x18060000 0x8>;
+				interrupts = <0>;
+				clocks = <&pll ATH79_CLK_AHB>;
+			};
+
 			miscintc: interrupt-controller@18060010 {
 				compatible = "qca,ar7240-misc-intc";
 				reg = <0x18060010 0x8>;
@@ -114,6 +121,31 @@
 
 				#reset-cells = <1>;
 			};
+
+			gpt@18060094 {
+				compatible = "qca,ar9331-gpt";
+				reg = <0x18060094 0x8>;
+				interrupts = <8>;
+				clocks = <&pll ATH79_CLK_AHB>;
+				status = "disabled";
+			};
+
+			gpt@1806009c {
+				compatible = "qca,ar9331-gpt";
+				reg = <0x1806009c 0x8>;
+				interrupts = <9>;
+				clocks = <&pll ATH79_CLK_AHB>;
+				status = "disabled";
+			};
+
+			gpt@180600a4 {
+				compatible = "qca,ar9331-gpt";
+				reg = <0x180600a4 0x8>;
+				interrupts = <10>;
+				clocks = <&pll ATH79_CLK_AHB>;
+				status = "disabled";
+			};
+
 		};
 
 		eth0: ethernet@19000000 {
