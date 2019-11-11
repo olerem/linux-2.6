@@ -781,21 +781,33 @@ static int ar9331_sw_probe(struct mdio_device *mdiodev)
 		return ret;
 
 	priv->ds = dsa_switch_alloc(&mdiodev->dev, AR9331_SW_PORTS);
-	if (!priv->ds)
-		return -ENOMEM;
+	if (!priv->ds) {
+		ret = -ENOMEM;
+		goto err_remove_irq;
+	}
 
 	priv->ds->priv = priv;
 	priv->ops = ar9331_sw_ops;
 	priv->ds->ops = &priv->ops;
 	dev_set_drvdata(&mdiodev->dev, priv);
 
-	return dsa_register_switch(priv->ds);
+	ret = dsa_register_switch(priv->ds);
+	if (ret)
+		goto err_remove_irq;
+
+	return 0;
+
+err_remove_irq:
+	irq_domain_remove(priv->irqdomain);
+
+	return ret;
 }
 
 static void ar9331_sw_remove(struct mdio_device *mdiodev)
 {
 	struct ar9331_sw_priv *priv = dev_get_drvdata(&mdiodev->dev);
 
+	irq_domain_remove(priv->irqdomain);
 	mdiobus_unregister(priv->mbus);
 	dsa_unregister_switch(priv->ds);
 
