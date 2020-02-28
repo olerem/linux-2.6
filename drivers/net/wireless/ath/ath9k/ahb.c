@@ -16,6 +16,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <linux/clk.h>
 #include <linux/nl80211.h>
 #include <linux/platform_device.h>
 #include <linux/module.h>
@@ -135,25 +136,13 @@ static int ar9330_get_soc_revision(void)
 	return 0;
 }
 
-static int ath79_get_soc_revision(void)
-{
-	return ath79_soc_rev;
-}
-
 static const struct of_ath_ahb_data {
 	u16 dev_id;
-	u32 bootstrap_reg;
-	u32 bootstrap_ref;
-
 	int (*soc_revision)(void);
-	int (*wmac_reset)(void);
 } of_ath_ahb_data[] = {
 	[AR933X_WMAC] = {
 		.dev_id = AR9300_DEVID_AR9330,
-		.bootstrap_reg = AR933X_RESET_REG_BOOTSTRAP,
-		.bootstrap_ref = AR933X_BOOTSTRAP_REF_CLK_40,
 		.soc_revision = ar9330_get_soc_revision,
-		.wmac_reset = ar933x_wmac_reset,
 	},
 };
 
@@ -168,7 +157,9 @@ static int of_ath_ahb_probe(struct platform_device *pdev)
 	struct ath9k_platform_data *pdata;
 	const struct of_device_id *match;
 	const struct of_ath_ahb_data *data;
+	struct clk *clk;
 	u8 led_pin;
+	int ret;
 
 	match = of_match_device(of_ath_ahb_match, &pdev->dev);
 	data = (const struct of_ath_ahb_data *)match->data;
@@ -189,24 +180,26 @@ static int of_ath_ahb_probe(struct platform_device *pdev)
 	if (of_property_read_bool(pdev->dev.of_node, "qca,tx-gain-buffalo"))
 		pdata->tx_gain_buffalo = true;
 
-	if (data->wmac_reset) {
-		data->wmac_reset();
-		pdata->external_reset = data->wmac_reset;
+	clk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(clk)) {
+		dev_err(&pdev->dev, "filed to get clock\n");
+		ret = PTR_ERR(clk);
+		return ret;
 	}
 
-	if (data->dev_id == AR9300_DEVID_AR953X) {
-		/*
-		 * QCA953x only supports 25MHz refclk.
-		 * Some vendors have an invalid bootstrap option
-		 * set, which would break the WMAC here.
-		 */
-		pdata->is_clk_25mhz = true;
-	} else if (data->bootstrap_reg && data->bootstrap_ref) {
-		u32 t = ath79_reset_rr(data->bootstrap_reg);
-		if (t & data->bootstrap_ref)
-			pdata->is_clk_25mhz = false;
-		else
+	ret = clk_prepare_enable(clk);
+	if (ret) {
+		dev_err(&pdev->dev, "filed to enable clock\n");
+		return ret;
+	}
+
+	{
+		unsigned long rate = clk_get_rate(clk);
+
+		if (rate > 24500000 && rate < 25500000)
 			pdata->is_clk_25mhz = true;
+		else
+			pdata->is_clk_25mhz = false;
 	}
 
 	pdata->get_mac_revision = data->soc_revision;
