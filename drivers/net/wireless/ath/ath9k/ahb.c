@@ -123,69 +123,8 @@ static int of_get_wifi_cal(struct device_node *np, struct ath9k_platform_data *p
 	return 0;
 }
 
-static int ar913x_wmac_reset(void)
-{
-	ath79_device_reset_set(AR913X_RESET_AMBA2WMAC);
-	mdelay(10);
-
-	ath79_device_reset_clear(AR913X_RESET_AMBA2WMAC);
-	mdelay(10);
-
-	return 0;
-}
-
-static int ar933x_wmac_reset(void)
-{
-	int retries = 20;
-
-	ath79_device_reset_set(AR933X_RESET_WMAC);
-	ath79_device_reset_clear(AR933X_RESET_WMAC);
-
-	while (1) {
-		u32 bootstrap;
-
-		bootstrap = ath79_reset_rr(AR933X_RESET_REG_BOOTSTRAP);
-		if ((bootstrap & AR933X_BOOTSTRAP_EEPBUSY) == 0)
-			return 0;
-
-		if (retries-- == 0)
-			break;
-
-		udelay(10000);
-	}
-
-	pr_err("ar933x: WMAC reset timed out");
-	return -ETIMEDOUT;
-}
-
-static int qca955x_wmac_reset(void)
-{
-	int i;
-
-	/* Try to wait for WMAC DDR activity to stop */
-	for (i = 0; i < 10; i++) {
-		if (!(__raw_readl(ath79_ddr_base + QCA955X_DDR_CTL_CONFIG) &
-		    QCA955X_DDR_CTL_CONFIG_ACT_WMAC))
-			break;
-
-		udelay(10);
-	}
-
-	ath79_device_reset_set(QCA955X_RESET_RTC);
-	udelay(10);
-	ath79_device_reset_clear(QCA955X_RESET_RTC);
-	udelay(10);
-
-	return 0;
-}
-
 enum {
-	AR913X_WMAC = 0,
 	AR933X_WMAC,
-	AR934X_WMAC,
-	QCA953X_WMAC,
-	QCA955X_WMAC,
-	QCA956X_WMAC,
 };
 
 static int ar9330_get_soc_revision(void)
@@ -209,11 +148,6 @@ static const struct of_ath_ahb_data {
 	int (*soc_revision)(void);
 	int (*wmac_reset)(void);
 } of_ath_ahb_data[] = {
-	[AR913X_WMAC] = {
-		.dev_id = AR5416_AR9100_DEVID,
-		.wmac_reset = ar913x_wmac_reset,
-
-	},
 	[AR933X_WMAC] = {
 		.dev_id = AR9300_DEVID_AR9330,
 		.bootstrap_reg = AR933X_RESET_REG_BOOTSTRAP,
@@ -221,39 +155,10 @@ static const struct of_ath_ahb_data {
 		.soc_revision = ar9330_get_soc_revision,
 		.wmac_reset = ar933x_wmac_reset,
 	},
-	[AR934X_WMAC] = {
-		.dev_id = AR9300_DEVID_AR9340,
-		.bootstrap_reg = AR934X_RESET_REG_BOOTSTRAP,
-		.bootstrap_ref = AR934X_BOOTSTRAP_REF_CLK_40,
-		.soc_revision = ath79_get_soc_revision,
-	},
-	[QCA953X_WMAC] = {
-		.dev_id = AR9300_DEVID_AR953X,
-		.bootstrap_reg = QCA953X_RESET_REG_BOOTSTRAP,
-		.bootstrap_ref = QCA953X_BOOTSTRAP_REF_CLK_40,
-		.soc_revision = ath79_get_soc_revision,
-	},
-	[QCA955X_WMAC] = {
-		.dev_id = AR9300_DEVID_QCA955X,
-		.bootstrap_reg = QCA955X_RESET_REG_BOOTSTRAP,
-		.bootstrap_ref = QCA955X_BOOTSTRAP_REF_CLK_40,
-		.wmac_reset = qca955x_wmac_reset,
-	},
-	[QCA956X_WMAC] = {
-		.dev_id = AR9300_DEVID_QCA956X,
-		.bootstrap_reg = QCA956X_RESET_REG_BOOTSTRAP,
-		.bootstrap_ref = QCA956X_BOOTSTRAP_REF_CLK_40,
-		.soc_revision = ath79_get_soc_revision,
-	},
 };
 
 const struct of_device_id of_ath_ahb_match[] = {
-	{ .compatible = "qca,ar9130-wmac", .data = &of_ath_ahb_data[AR913X_WMAC] },
 	{ .compatible = "qca,ar9330-wmac", .data = &of_ath_ahb_data[AR933X_WMAC] },
-	{ .compatible = "qca,ar9340-wmac", .data = &of_ath_ahb_data[AR934X_WMAC] },
-	{ .compatible = "qca,qca9530-wmac", .data = &of_ath_ahb_data[QCA953X_WMAC] },
-	{ .compatible = "qca,qca9550-wmac", .data = &of_ath_ahb_data[QCA955X_WMAC] },
-	{ .compatible = "qca,qca9560-wmac", .data = &of_ath_ahb_data[QCA956X_WMAC] },
 	{},
 };
 MODULE_DEVICE_TABLE(of, of_ath_ahb_match);
