@@ -148,6 +148,16 @@
 
 		};
 
+		wmac: wmac@18100000 {
+			compatible = "qca,ar9331-wmac";
+			reg = <0x18100000 0x20000>;
+
+			interrupts = <2>;
+			clocks = <&ref>;
+
+			status = "disabled";
+		};
+
 		eth0: ethernet@19000000 {
 			compatible = "qca,ar9330-eth";
 			reg = <0x19000000 0x200>;
