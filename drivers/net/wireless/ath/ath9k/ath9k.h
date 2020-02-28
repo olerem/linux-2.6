@@ -992,6 +992,9 @@ struct ath_softc {
 	struct ath_hw *sc_ah;
 	void __iomem *mem;
 	int irq;
+#ifdef CONFIG_OF
+	struct reset_control *reset;
+#endif
 	spinlock_t sc_serial_rw;
 	spinlock_t sc_pm_lock;
 	spinlock_t sc_pcu_lock;
