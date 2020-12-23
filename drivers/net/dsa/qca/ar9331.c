@@ -40,6 +40,7 @@
  */
 
 #include <linux/bitfield.h>
+#include <linux/if_bridge.h>
 #include <linux/module.h>
 #include <linux/of_irq.h>
 #include <linux/of_mdio.h>
@@ -49,6 +50,7 @@
 
 #define AR9331_SW_NAME				"ar9331_switch"
 #define AR9331_SW_PORTS				6
+#define AR9331_SW_CPU_PORT			0
 
 /* dummy reg to change page */
 #define AR9331_SW_REG_PAGE			0x40000
@@ -60,9 +62,85 @@
 
 #define AR9331_SW_REG_FLOOD_MASK		0x2c
 #define AR9331_SW_FLOOD_MASK_BROAD_TO_CPU	BIT(26)
+#define AR9331_SW_FLOOD_MASK_MULTI_FLOOD_DP	GENMASK(20, 16)
+#define AR9331_SW_FLOOD_MASK_UNI_FLOOD_DP	GENMASK(4, 0)
 
 #define AR9331_SW_REG_GLOBAL_CTRL		0x30
 #define AR9331_SW_GLOBAL_CTRL_MFS_M		GENMASK(13, 0)
+
+/*
+ * Fallowing terminology is used in the Atheros manual and in the driver:
+ * ARL - address resolution logic
+ * AT - address table
+ * ATF - address table function
+ * ATU - address translation unit
+ * FDB - forwarding database
+ */
+/* Size of the address resolution table (ARL) */
+#define AR9331_SW_NUM_ARL_RECORDS		1024
+
+#define AR9331_SW_REG_ADDR_TABLE_FUNCTION0	0x50
+#define AR9331_SW_AT_ADDR_BYTES4		GENMASK(31, 24)
+#define AR9331_SW_AT_ADDR_BYTES5		GENMASK(23, 16)
+#define AR9331_SW_AT_FULL_VIO			BIT(12)
+#define AR9331_SW_AT_PORT_NUM			GENMASK(11, 8)
+#define AR9331_SW_AT_FLUSH_STATIC_EN		BIT(4)
+#define AR9331_SW_AT_BUSY			BIT(3)
+#define AR9331_SW_AT_FUNC			GENMASK(2, 0)
+#define AR9331_SW_AT_FUNC_NOP			0
+#define AR9331_SW_AT_FUNC_FLUSH_ALL		1
+#define AR9331_SW_AT_FUNC_LOAD_ENTRY		2
+#define AR9331_SW_AT_FUNC_PURGE_ENTRY		3
+#define AR9331_SW_AT_FUNC_FLUSH_ALL_UNLOCKED	4
+#define AR9331_SW_AT_FUNC_FLUSH_PORT		5
+#define AR9331_SW_AT_FUNC_GET_NEXT		6
+#define AR9331_SW_AT_FUNC_FIND_MAC		7
+
+#define AR9331_SW_REG_ADDR_TABLE_FUNCTION1	0x54
+#define AR9331_SW_AT_ADDR_BYTES0		GENMASK(31, 24)
+#define AR9331_SW_AT_ADDR_BYTES1		GENMASK(23, 16)
+#define AR9331_SW_AT_ADDR_BYTES2		GENMASK(15, 8)
+#define AR9331_SW_AT_ADDR_BYTES3		GENMASK(7, 0)
+
+#define AR9331_SW_REG_ADDR_TABLE_FUNCTION2	0x58
+#define AR9331_SW_AT_COPY_TO_CPU		BIT(26)
+#define AR9331_SW_AT_REDIRECT_TOCPU		BIT(25)
+#define AR9331_SW_AT_LEAKY_EN			BIT(24)
+#define AR9331_SW_AT_STATUS			GENMASK(19, 16)
+#define AR9331_SW_AT_STATUS_EMPTY		0
+/* STATUS values from 7 to 1 are different aging levels */
+#define AR9331_SW_AT_STATUS_STATIC		0xf
+
+#define AR9331_SW_AT_SA_DROP_EN			BIT(14)
+#define AR9331_SW_AT_MIRROR_EN			BIT(13)
+#define AR9331_SW_AT_PRIORITY_EN		BIT(12)
+#define AR9331_SW_AT_PRIORITY			GENMASK(11, 10)
+#define AR9331_SW_AT_DES_PORT			GENMASK(5, 0)
+
+#define AR9331_SW_REG_ADDR_TABLE_CTRL		0x5c
+#define AR9331_SW_AT_ARP_EN			BIT(20)
+#define AR9331_SW_AT_LEARN_CHANGE_EN		BIT(18)
+#define AR9331_SW_AT_AGE_EN			BIT(17)
+#define AR9331_SW_AT_AGE_TIME			GENMASK(15, 0)
+#define AR9331_SW_AT_AGE_TIME_COEF		6900 /* msec FIXME: test it */
+
+/*
+ * For better understanding of ATU build in to the Atheros AR9331, here is the
+ * address entry layout recovered from different documentation snippets:
+ *  70 COPY_TO_CPU
+ *  69 REDIRECT_TO_CPU
+ *  68 LEAKY_EN
+ *  - res -
+ *  64 SA_DROP_EN
+ *  63:62 AT_STATUS
+ *  - res -
+ *  61 MIRROR_EN
+ *  60 AT_PRIORITY_EN
+ *  59:58 AT_PRIORITY
+ *  57:54 - res -
+ *  53:48 DES_PORT
+ *  0:47 MAC
+ */
 
 #define AR9331_SW_REG_MDIO_CTRL			0x98
 #define AR9331_SW_MDIO_CTRL_BUSY		BIT(31)
@@ -101,15 +179,48 @@
 	 AR9331_SW_PORT_STATUS_RX_FLOW_EN | AR9331_SW_PORT_STATUS_TX_FLOW_EN | \
 	 AR9331_SW_PORT_STATUS_SPEED_M)
 
-#define AR9331_SW_REG_PORT_CTRL(_port)		(0x104 + (_port) * 0x100)
-#define AR9331_SW_PORT_CTRL_LEARN_EN		BIT(14)
+#define AR9331_SW_REG_PORT_CTRL(_port)			(0x104 + (_port) * 0x100)
+#define AR9331_SW_PORT_CTRL_ING_MIRROR_EN		BIT(17)
+#define AR9331_SW_PORT_CTRL_EG_MIRROR_EN		BIT(16)
+#define AR9331_SW_PORT_CTRL_DOUBLE_TAG_VLAN		BIT(15)
+#define AR9331_SW_PORT_CTRL_LEARN_EN			BIT(14)
+#define AR9331_SW_PORT_CTRL_SINGLE_VLAN_EN		BIT(13)
+#define AR9331_SW_PORT_CTRL_MAC_LOOP_BACK		BIT(12)
+#define AR9331_SW_PORT_CTRL_HEAD_EN			BIT(11)
+#define AR9331_SW_PORT_CTRL_IGMP_MLD_EN			BIT(10)
+#define AR9331_SW_PORT_CTRL_EG_VLAN_MODE		GENMASK(9, 8)
+#define AR9331_SW_PORT_CTRL_LEARN_ONE_LOCK		BIT(7)
+#define AR9331_SW_PORT_CTRL_PORT_LOCK_EN		BIT(6)
+#define AR9331_SW_PORT_CTRL_LOCK_DROP_EN		BIT(5)
+#define AR9331_SW_PORT_CTRL_PORT_STATE			GENMASK(2, 0)
+#define AR9331_SW_PORT_CTRL_PORT_STATE_DISABLED		0
+#define AR9331_SW_PORT_CTRL_PORT_STATE_BLOCKING		1
+#define AR9331_SW_PORT_CTRL_PORT_STATE_LISTENING	2
+#define AR9331_SW_PORT_CTRL_PORT_STATE_LEARNING		3
+#define AR9331_SW_PORT_CTRL_PORT_STATE_FORWARD		4
+
+#define AR9331_SW_REG_PORT_VLAN(_port)			(0x108 + (_port) * 0x100)
+#define AR9331_SW_PORT_VLAN_8021Q_MODE			GENMASK(31, 30)
+#define AR9331_SW_8021Q_MODE_SECURE			3
+#define AR9331_SW_8021Q_MODE_CHECK			2
+#define AR9331_SW_8021Q_MODE_FALLBACK			1
+#define AR9331_SW_8021Q_MODE_NONE			0
+#define AR9331_SW_PORT_VLAN_ING_PORT_PRI		GENMASK(29, 27)
+#define AR9331_SW_PORT_VLAN_FORCE_PORT_VLAN_EN		BIT(26)
+#define AR9331_SW_PORT_VLAN_PORT_VID_MEMBER		GENMASK(25, 16)
+#define AR9331_SW_PORT_VLAN_ARP_LEAKY_EN		BIT(15)
+#define AR9331_SW_PORT_VLAN_UNI_LEAKY_EN		BIT(14)
+#define AR9331_SW_PORT_VLAN_MULTI_LEAKY_EN		BIT(13)
+#define AR9331_SW_PORT_VLAN_FORCE_DEFALUT_VID_EN	BIT(12)
+#define AR9331_SW_PORT_VLAN_PORT_VID			GENMASK(11, 0)
+#define AR9331_SW_PORT_VLAN_PORT_VID_DEF		1
 
 /* MIB registers */
 #define AR9331_MIB_COUNTER(x)			(0x20000 + ((x) * 0x100))
 
 /* Phy bypass mode
  * ------------------------------------------------------------------------
- * Bit:   | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |10 |11 |12 |13 |14 |15 |
+* Bit:   | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |10 |11 |12 |13 |14 |15 |
  *
  * real   | start |   OP  | PhyAddr           |  Reg Addr         |  TA   |
  * atheros| start |   OP  | 2'b00 |PhyAdd[2:0]|  Reg Addr[4:0]    |  TA   |
@@ -220,6 +331,12 @@ struct ar9331_sw_port {
 	struct spinlock stats_lock;
 };
 
+struct ar9331_sw_fdb {
+	u8 port_mask;
+	u8 aging;
+	u8 mac[ETH_ALEN];
+};
+
 struct ar9331_sw_priv {
 	struct device *dev;
 	struct dsa_switch ds;
@@ -232,6 +349,8 @@ struct ar9331_sw_priv {
 	struct regmap *regmap;
 	struct reset_control *sw_reset;
 	struct ar9331_sw_port port[AR9331_SW_PORTS];
+	int cpu_port;
+	u32 isolated_ports;
 };
 
 static struct ar9331_sw_priv *ar9331_sw_port_to_priv(struct ar9331_sw_port *port)
@@ -374,11 +493,70 @@ static int ar9331_sw_mbus_init(struct ar9331_sw_priv *priv)
 	return 0;
 }
 
+static int ar9331_sw_setup_port(struct dsa_switch *ds, int port)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	struct regmap *regmap = priv->regmap;
+	u32 port_mask, port_ctrl, val;
+	int ret;
+
+	/* Generate default port settings */
+	port_ctrl = FIELD_PREP(AR9331_SW_PORT_CTRL_PORT_STATE,
+			       AR9331_SW_PORT_CTRL_PORT_STATE_DISABLED);
+
+	if (dsa_is_cpu_port(ds, port)) {
+		/*
+		 * CPU port should be allowed to communicate with all user
+		 * ports.
+		 */
+		//port_mask = dsa_user_ports(ds);
+		port_mask = 0;
+		/*
+		 * Enable atheros header on CPU port. This will allow us
+		 * communicate with each port separately
+		 */
+		port_ctrl |= AR9331_SW_PORT_CTRL_HEAD_EN;
+		port_ctrl |= AR9331_SW_PORT_CTRL_LEARN_EN;
+	} else if (dsa_is_user_port(ds, port)) {
+		/*
+		 * User ports should communicate only with the CPU port.
+		 */
+		port_mask = BIT(priv->cpu_port);
+		/* Enable unicast address learning by default */
+		port_ctrl |= AR9331_SW_PORT_CTRL_LEARN_EN
+		/* IGMP snooping seems to work correctly, let's use it */
+			  | AR9331_SW_PORT_CTRL_IGMP_MLD_EN;
+	} else {
+		/* Other ports do not need to communicate at all */
+		port_mask = 0;
+	}
+
+	val = FIELD_PREP(AR9331_SW_PORT_VLAN_8021Q_MODE,
+			 AR9331_SW_8021Q_MODE_NONE) |
+		FIELD_PREP(AR9331_SW_PORT_VLAN_PORT_VID_MEMBER, port_mask) |
+		FIELD_PREP(AR9331_SW_PORT_VLAN_PORT_VID,
+			   AR9331_SW_PORT_VLAN_PORT_VID_DEF);
+
+	ret = regmap_write(regmap, AR9331_SW_REG_PORT_VLAN(port), val);
+	if (ret)
+		goto error;
+
+	ret = regmap_write(regmap, AR9331_SW_REG_PORT_CTRL(port), port_ctrl);
+	if (ret)
+		goto error;
+
+	return 0;
+error:
+	dev_err_ratelimited(priv->dev, "%s: error: %i\n", __func__, ret);
+
+	return ret;
+}
+
 static int ar9331_sw_setup(struct dsa_switch *ds)
 {
 	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
 	struct regmap *regmap = priv->regmap;
-	int ret;
+	int ret, i;
 
 	ret = ar9331_sw_reset(priv);
 	if (ret)
@@ -393,7 +571,8 @@ static int ar9331_sw_setup(struct dsa_switch *ds)
 
 	/* Do not drop broadcast frames */
 	ret = regmap_write_bits(regmap, AR9331_SW_REG_FLOOD_MASK,
-				AR9331_SW_FLOOD_MASK_BROAD_TO_CPU,
+				AR9331_SW_FLOOD_MASK_BROAD_TO_CPU
+				| AR9331_SW_FLOOD_MASK_MULTI_FLOOD_DP,
 				AR9331_SW_FLOOD_MASK_BROAD_TO_CPU);
 	if (ret)
 		goto error;
@@ -404,6 +583,36 @@ static int ar9331_sw_setup(struct dsa_switch *ds)
 				AR9331_SW_GLOBAL_CTRL_MFS_M);
 	if (ret)
 		goto error;
+
+	/*
+	 * Configure the ARL:
+	 * AR9331_SW_AT_ARP_EN - why?
+	 * AR9331_SW_AT_LEARN_CHANGE_EN - why?
+	 */
+	ret = regmap_set_bits(regmap, AR9331_SW_REG_ADDR_TABLE_CTRL,
+			      AR9331_SW_AT_ARP_EN |
+			      AR9331_SW_AT_LEARN_CHANGE_EN);
+	if (ret)
+		goto error;
+
+	/* find the CPU port */
+	priv->cpu_port = -1;
+	for (i = 0; i < ds->num_ports; i++) {
+		if (!dsa_is_cpu_port(ds, i))
+			continue;
+
+		if (priv->cpu_port != -1)
+			dev_err_ratelimited(priv->dev, "%s: more then one CPU port. Already set: %i, trying to add: %i\n",
+					    __func__, priv->cpu_port, i);
+		else
+			priv->cpu_port = i;
+	}
+
+	for (i = 0; i < ds->num_ports; i++) {
+		ret = ar9331_sw_setup_port(ds, i);
+		if (ret)
+			goto error;
+	}
 
 	ds->configure_vlan_while_not_filtering = false;
 
@@ -627,6 +836,546 @@ static void ar9331_get_stats64(struct dsa_switch *ds, int port,
 	spin_unlock(&p->stats_lock);
 }
 
+static int ar9331_sw_fdb_next(struct ar9331_sw_priv *priv,
+			      struct ar9331_sw_fdb *fdb, int port)
+{
+	struct regmap *regmap = priv->regmap;
+	unsigned int status, ports;
+	u32 f0, f1, f2;
+	int ret;
+
+	/* Keep AT_ADDR_BYTES4/5 to search next entry after current */
+	ret = regmap_update_bits(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION0,
+				 AR9331_SW_AT_FUNC | AR9331_SW_AT_BUSY,
+				 AR9331_SW_AT_BUSY |
+				 FIELD_PREP(AR9331_SW_AT_FUNC,
+					    AR9331_SW_AT_FUNC_GET_NEXT));
+	if (ret)
+		return ret;
+
+	ret = regmap_read_poll_timeout(regmap,
+				       AR9331_SW_REG_ADDR_TABLE_FUNCTION0,
+				       f0, !(f0 & AR9331_SW_AT_BUSY),
+				       10, 2000);
+	if (ret)
+		return ret;
+
+	ret = regmap_read(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION2, &f2);
+	if (ret)
+		return ret;
+
+	/*
+	 * If the hardware returns an MAC != 0 and the AT_STATUS is zero, there
+	 * is no next valid entry in the address table.
+	 */
+	status = FIELD_GET(AR9331_SW_AT_STATUS, f2);
+	fdb->aging = status;
+	if (!status)
+		return 0;
+
+	ret = regmap_read(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION1, &f1);
+	if (ret)
+		return ret;
+
+	fdb->mac[0] = FIELD_GET(AR9331_SW_AT_ADDR_BYTES0, f1);
+	fdb->mac[1] = FIELD_GET(AR9331_SW_AT_ADDR_BYTES1, f1);
+	fdb->mac[2] = FIELD_GET(AR9331_SW_AT_ADDR_BYTES2, f1);
+	fdb->mac[3] = FIELD_GET(AR9331_SW_AT_ADDR_BYTES3, f1);
+	fdb->mac[4] = FIELD_GET(AR9331_SW_AT_ADDR_BYTES4, f0);
+	fdb->mac[5] = FIELD_GET(AR9331_SW_AT_ADDR_BYTES5, f0);
+
+	ports = FIELD_GET(AR9331_SW_AT_DES_PORT, f2);
+	dev_info(priv->dev, "%s(%pM, %x), %x %x %x\n", __func__, fdb->mac, ports, f0, f1, f2);
+
+	if (!(ports & BIT(port)))
+		return -EAGAIN;
+
+	return 0;
+}
+
+static int ar9331_sw_port_fdb_dump(struct dsa_switch *ds, int port,
+				   dsa_fdb_dump_cb_t *cb, void *data)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	struct regmap *regmap = priv->regmap;
+	int cnt = AR9331_SW_NUM_ARL_RECORDS;
+	struct ar9331_sw_fdb _fdb = { 0 };
+	bool is_static;
+	int ret;
+	u32 f0;
+
+	/*
+	 * Make sure no pending operation is in progress. Since no timeout and
+	 * interval values are documented, we use here "seems to be sane, works
+	 * for me" values.
+	 */
+	ret = regmap_read_poll_timeout(regmap,
+				       AR9331_SW_REG_ADDR_TABLE_FUNCTION0,
+				       f0, !(f0 & AR9331_SW_AT_BUSY),
+				       100, 2000);
+	if (ret)
+		return ret;
+
+	/*
+	 * If the address and the AT_STATUS are both zero, the hardware will
+	 * search the first valid entry from entry0.
+	 * If the address is set to zero and the AT_STATUS is not zero, the
+	 * hardware will discover the next valid entry which has an address
+	 * of 0x0.
+	 */
+	ret = regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION1, 0);
+	if (ret)
+		return ret;
+
+	ret = regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION2, 0);
+	if (ret)
+		return ret;
+
+	/* Set AT_ADDR_BYTES4/5 to zero, so now we can search for the entry0. */
+	ret = regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION0, 0);
+	if (ret)
+		return ret;
+
+	while (cnt--) {
+		ret = ar9331_sw_fdb_next(priv, &_fdb, port);
+		if (ret == -EAGAIN)
+			continue;
+		else if (ret)
+			return ret;
+
+		if (!_fdb.aging)
+			break;
+
+		is_static = (_fdb.aging == AR9331_SW_AT_STATUS_STATIC);
+		ret = cb(_fdb.mac, 0, is_static, data);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
+static int ar9331_sw_port_fdb_rmw(struct ar9331_sw_priv *priv,
+				  const unsigned char *mac,
+				  u8 port_mask_set,
+				  u8 port_mask_clr)
+{
+	struct regmap *regmap = priv->regmap;
+	u32 f0, f1, f2;
+	u8 port_mask, port_mask_new, status, func;
+	int ret;
+
+	ret = regmap_read_poll_timeout(regmap,
+				       AR9331_SW_REG_ADDR_TABLE_FUNCTION0,
+				       f0, !(f0 & AR9331_SW_AT_BUSY),
+				       100, 2000);
+	if (ret)
+		return ret;
+
+	f2 = FIELD_PREP(AR9331_SW_AT_STATUS, AR9331_SW_AT_STATUS_STATIC);
+	f1 = FIELD_PREP(AR9331_SW_AT_ADDR_BYTES0, mac[0]) |
+	     FIELD_PREP(AR9331_SW_AT_ADDR_BYTES1, mac[1]) |
+	     FIELD_PREP(AR9331_SW_AT_ADDR_BYTES2, mac[2]) |
+	     FIELD_PREP(AR9331_SW_AT_ADDR_BYTES3, mac[3]);
+	f0 = FIELD_PREP(AR9331_SW_AT_ADDR_BYTES4, mac[4]) |
+	     FIELD_PREP(AR9331_SW_AT_ADDR_BYTES5, mac[5]) |
+	     FIELD_PREP(AR9331_SW_AT_FUNC, AR9331_SW_AT_FUNC_FIND_MAC) |
+	     AR9331_SW_AT_BUSY;
+
+	ret = regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION2, f2);
+	if (ret)
+		return ret;
+
+	ret = regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION1, f1);
+	if (ret)
+		return ret;
+
+	ret = regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION0, f0);
+	if (ret)
+		return ret;
+
+	ret = regmap_read_poll_timeout(regmap,
+				       AR9331_SW_REG_ADDR_TABLE_FUNCTION0,
+				       f0, !(f0 & AR9331_SW_AT_BUSY),
+				       10, 2000);
+	if (ret)
+		return ret;
+
+	ret = regmap_read(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION2, &f2);
+	if (ret)
+		return ret;
+
+	port_mask = FIELD_GET(AR9331_SW_AT_DES_PORT, f2);
+	status = FIELD_GET(AR9331_SW_AT_STATUS, f2);
+	if (status > 0 && status < AR9331_SW_AT_STATUS_STATIC) {
+		dev_err_ratelimited(priv->dev, "%s: found existing dynamic entry on %x\n",
+				    __func__, port_mask);
+		if (port_mask_set && port_mask_set != port_mask)
+			dev_err_ratelimited(priv->dev, "%s: found existing dynamic entry on %x, replacing it with static on %x\n",
+					    __func__, port_mask, port_mask_set);
+		port_mask = 0;
+	} else if (status == AR9331_SW_AT_STATUS_STATIC) {
+		dev_info(priv->dev, "%s: found existing static entry on %x\n",
+				    __func__, port_mask);
+	} else if (!status && !port_mask_set) {
+		dev_info(priv->dev, "%s: nothing to remove\n", __func__);
+		return 0;
+	}
+
+	port_mask_new = port_mask & ~port_mask_clr;
+	port_mask_new |= port_mask_set;
+
+	if (port_mask_new == port_mask &&
+	    status == AR9331_SW_AT_STATUS_STATIC) {
+		dev_info(priv->dev, "%s: no need to overwrite existing valid entry on %x\n",
+				    __func__, port_mask_new);
+		return 0;
+	}
+
+	if (port_mask_new) {
+		func = AR9331_SW_AT_FUNC_LOAD_ENTRY;
+	} else {
+		func = AR9331_SW_AT_FUNC_PURGE_ENTRY;
+		port_mask_new = port_mask;
+	}
+
+	printk("%s:%i func: %x, port_mask: %x\n", __func__, __LINE__, func, port_mask_new);
+	f2 = FIELD_PREP(AR9331_SW_AT_DES_PORT, port_mask_new) |
+		FIELD_PREP(AR9331_SW_AT_STATUS, AR9331_SW_AT_STATUS_STATIC);
+	f1 = FIELD_PREP(AR9331_SW_AT_ADDR_BYTES0, mac[0]) |
+	     FIELD_PREP(AR9331_SW_AT_ADDR_BYTES1, mac[1]) |
+	     FIELD_PREP(AR9331_SW_AT_ADDR_BYTES2, mac[2]) |
+	     FIELD_PREP(AR9331_SW_AT_ADDR_BYTES3, mac[3]);
+	f0 = FIELD_PREP(AR9331_SW_AT_ADDR_BYTES4, mac[4]) |
+	     FIELD_PREP(AR9331_SW_AT_ADDR_BYTES5, mac[5]) |
+	     FIELD_PREP(AR9331_SW_AT_FUNC, func) | AR9331_SW_AT_BUSY;
+
+	ret = regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION2, f2);
+	if (ret)
+		return ret;
+
+	ret = regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION1, f1);
+	if (ret)
+		return ret;
+
+	ret = regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION0, f0);
+	if (ret)
+		return ret;
+
+	if (ret)
+		return ret;
+
+	ret = regmap_read_poll_timeout(regmap,
+				       AR9331_SW_REG_ADDR_TABLE_FUNCTION0,
+				       f0, !(f0 & AR9331_SW_AT_BUSY),
+				       10, 2000);
+	if (ret)
+		return ret;
+
+	if (f0 & AR9331_SW_AT_FULL_VIO) {
+		/* cleanup error status */
+		regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION0, 0);
+		dev_err_ratelimited(priv->dev, "%s: can't add new entry, ATU is full\n", __func__);
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+
+
+static int ar9331_sw_port_fdb_add(struct dsa_switch *ds, int port,
+				  const unsigned char *mac, u16 vid)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	u16 port_mask = BIT(port);
+
+	dev_info(priv->dev, "%s(%pM, %x)\n", __func__, mac, port);
+
+	if (vid) {
+		dev_err_ratelimited(priv->dev, "%s:  vlans aren't supported\n", __func__);
+		return -EINVAL;
+	}
+
+	return ar9331_sw_port_fdb_rmw(priv, mac, port_mask, 0);
+}
+
+static int ar9331_sw_port_fdb_del(struct dsa_switch *ds, int port,
+			       const unsigned char *mac, u16 vid)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	u16 port_mask = BIT(port);
+
+	dev_info(priv->dev, "%s(%pM, %x)\n", __func__, mac, port);
+
+	if (vid) {
+		dev_err_ratelimited(priv->dev, "%s:  vlans aren't supported\n", __func__);
+		return -EINVAL;
+	}
+
+	return ar9331_sw_port_fdb_rmw(priv, mac, 0, port_mask);
+}
+
+static int ar9331_sw_port_mdb_add(struct dsa_switch *ds, int port,
+				  const struct switchdev_obj_port_mdb *mdb)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	u16 port_mask = BIT(port);
+	int err;
+
+	dev_info(priv->dev, "%s(%d, %pM, %d)\n", __func__, port, mdb->addr,
+		mdb->vid);
+	if (mdb->vid)
+		return -EOPNOTSUPP;
+
+	return ar9331_sw_port_fdb_rmw(priv, mdb->addr, port_mask, 0);
+}
+
+static int ar9331_sw_port_mdb_del(struct dsa_switch *ds, int port,
+				  const struct switchdev_obj_port_mdb *mdb)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	u16 port_mask = BIT(port);
+
+	dev_info(priv->dev, "%s(%d, %pM, %d)\n", __func__, port, mdb->addr,
+		mdb->vid);
+	if (mdb->vid)
+		return -EOPNOTSUPP;
+
+	return ar9331_sw_port_fdb_rmw(priv, mdb->addr, 0, port_mask);
+}
+
+static void ar9331_sw_port_fast_age(struct dsa_switch *ds, int port)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	struct regmap *regmap = priv->regmap;
+	int ret;
+	u32 f0;
+
+	dev_info(priv->dev, "%s( %x)\n", __func__, port);
+	ret = regmap_read_poll_timeout(regmap,
+				       AR9331_SW_REG_ADDR_TABLE_FUNCTION0,
+				       f0, !(f0 & AR9331_SW_AT_BUSY),
+				       100, 2000);
+	if (ret)
+		goto error;
+
+	/* Flush all non static unicast address on a given port */
+	f0 = FIELD_PREP(AR9331_SW_AT_PORT_NUM, port)
+	   | FIELD_PREP(AR9331_SW_AT_FUNC, AR9331_SW_AT_FUNC_FLUSH_PORT)
+	   | AR9331_SW_AT_BUSY;
+
+	ret = regmap_write(regmap, AR9331_SW_REG_ADDR_TABLE_FUNCTION0, f0);
+	if (ret)
+		goto error;
+
+	ret = regmap_read_poll_timeout(regmap,
+				       AR9331_SW_REG_ADDR_TABLE_FUNCTION0,
+				       f0, !(f0 & AR9331_SW_AT_BUSY),
+				       10, 2000);
+	if (ret)
+		goto error;
+
+	return;
+error:
+	dev_err_ratelimited(priv->dev, "%s: error: %i\n", __func__, ret);
+}
+
+static int ar9331_sw_set_ageing_time(struct dsa_switch *ds,
+				     unsigned int ageing_time)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	struct regmap *regmap = priv->regmap;
+	u32 time;
+
+	// TODO: can we get 0? should we disable ageing on 0?
+	time = DIV_ROUND_UP(ageing_time, AR9331_SW_AT_AGE_TIME_COEF);
+	if (!time)
+		time = 1;
+	else if (time > U16_MAX)
+		time = U16_MAX;
+
+	return regmap_update_bits(regmap, AR9331_SW_REG_ADDR_TABLE_CTRL,
+				 AR9331_SW_AT_AGE_EN | AR9331_SW_AT_AGE_TIME,
+				 AR9331_SW_AT_AGE_EN |
+				 FIELD_PREP(AR9331_SW_AT_AGE_TIME, time));
+}
+
+static int ar9331_sw_port_bridge_join(struct dsa_switch *ds, int port,
+				      struct net_device *br)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	struct regmap *regmap = priv->regmap;
+	int port_mask = BIT(priv->cpu_port);
+	int i, ret;
+
+	/* if this functions is executed from the STP handler, there can be !br */
+	if (!br)
+		return 0;
+
+	dev_info(priv->dev, "%s(%x)\n", __func__, port);
+	for (i = 0; i < ds->num_ports; i++) {
+		if (dsa_to_port(ds, i)->bridge_dev != br)
+			continue;
+
+		if (!dsa_is_user_port(ds, port))
+			continue;
+
+		/* part of the bridge but should be isolated for now */
+		if (priv->isolated_ports & BIT(i))
+			continue;
+
+		dev_info(priv->dev, "%s(%x set)\n", __func__, i);
+		ret = regmap_set_bits(regmap, AR9331_SW_REG_PORT_VLAN(i),
+				FIELD_PREP(AR9331_SW_PORT_VLAN_PORT_VID_MEMBER,
+					   BIT(port)));
+		if (ret)
+			goto error;
+
+		if (i != port)
+			port_mask |= BIT(i);
+	}
+
+	ret = regmap_update_bits(regmap, AR9331_SW_REG_PORT_VLAN(port),
+			AR9331_SW_PORT_VLAN_PORT_VID_MEMBER,
+			FIELD_PREP(AR9331_SW_PORT_VLAN_PORT_VID_MEMBER,
+				   port_mask));
+
+	if (ret)
+		goto error;
+
+	return 0;
+error:
+	dev_err_ratelimited(priv->dev, "%s: error: %i\n", __func__, ret);
+
+	return ret;
+}
+
+static void ar9331_sw_port_bridge_leave(struct dsa_switch *ds, int port,
+					struct net_device *br)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	struct regmap *regmap = priv->regmap;
+	int i, ret;
+
+	/* if this functions is executed from the STP handler, there can be !br */
+	if (!br)
+		return;
+
+	dev_info(priv->dev, "%s(%x)\n", __func__, port);
+	for (i = 0; i < ds->num_ports; i++) {
+		if (dsa_to_port(ds, i)->bridge_dev != br)
+			continue;
+
+		if (!dsa_is_user_port(ds, port))
+			continue;
+
+		dev_info(priv->dev, "%s(%x clr)\n", __func__, i);
+		ret = regmap_clear_bits(regmap, AR9331_SW_REG_PORT_VLAN(i),
+				FIELD_PREP(AR9331_SW_PORT_VLAN_PORT_VID_MEMBER,
+					   BIT(port)));
+		if (ret)
+			goto error;
+	}
+
+	ret = regmap_update_bits(regmap, AR9331_SW_REG_PORT_VLAN(port),
+			   AR9331_SW_PORT_VLAN_PORT_VID_MEMBER,
+			   FIELD_PREP(AR9331_SW_PORT_VLAN_PORT_VID_MEMBER,
+				      BIT(priv->cpu_port)));
+	if (ret)
+		goto error;
+
+	return;
+error:
+	dev_err_ratelimited(priv->dev, "%s: error: %i\n", __func__, ret);
+}
+
+static int ar9331_sw_port_egress_floods(struct dsa_switch *ds, int port,
+					bool unicast, bool multicast)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	struct regmap *regmap = priv->regmap;
+	u32 mask, val = 0;
+
+	dev_info(priv->dev, "%s port: %i, m %i, u %i\n", __func__, port,
+		 multicast, unicast);
+
+	mask = FIELD_PREP(AR9331_SW_FLOOD_MASK_MULTI_FLOOD_DP, BIT(port))
+	     | FIELD_PREP(AR9331_SW_FLOOD_MASK_UNI_FLOOD_DP, BIT(port));
+
+	if (unicast)
+		val |= FIELD_PREP(AR9331_SW_FLOOD_MASK_UNI_FLOOD_DP,
+				  BIT(port));
+
+	if (multicast)
+		val |= FIELD_PREP(AR9331_SW_FLOOD_MASK_MULTI_FLOOD_DP,
+				  BIT(port));
+
+	return regmap_update_bits(regmap, AR9331_SW_REG_FLOOD_MASK, mask, val);
+}
+
+static void ar9331_sw_port_stp_state_set(struct dsa_switch *ds, int port,
+					 u8 state)
+{
+	struct ar9331_sw_priv *priv = (struct ar9331_sw_priv *)ds->priv;
+	struct net_device *br = dsa_to_port(ds, port)->bridge_dev;
+	struct regmap *regmap = priv->regmap;
+	bool join = false;
+	u32 port_ctrl = 0, port_state = 0;
+	int ret;
+
+	dev_info(priv->dev, "%s(%x, %x) br %p\n", __func__, state, port, br);
+	/*
+	 * STP hw support is buggy or I didn't understood it. So, it seems to
+	 * be easier to make hand crafted implementation by using bridge
+	 * functionality. Similar implementation can be found on ksz9477 switch
+	 * and may be we need some generic code to so for all related devices
+	 */
+	switch (state) {
+	case BR_STATE_FORWARDING:
+		join = true;
+		fallthrough;
+	case BR_STATE_LEARNING:
+		port_ctrl = AR9331_SW_PORT_CTRL_LEARN_EN;
+		fallthrough;
+	case BR_STATE_LISTENING:
+	case BR_STATE_BLOCKING:
+		port_state = AR9331_SW_PORT_CTRL_PORT_STATE_FORWARD;
+		break;
+	case BR_STATE_DISABLED:
+	default:
+		port_state = AR9331_SW_PORT_CTRL_PORT_STATE_DISABLED;
+		break;
+	}
+
+	port_ctrl |= FIELD_PREP(AR9331_SW_PORT_CTRL_PORT_STATE, port_state);
+
+	ret = regmap_update_bits(regmap, AR9331_SW_REG_PORT_CTRL(port),
+			   AR9331_SW_PORT_CTRL_LEARN_EN
+			   | AR9331_SW_PORT_CTRL_PORT_STATE, port_ctrl);
+	if (ret)
+		goto error;
+
+	if (!dsa_is_user_port(ds, port))
+		return;
+
+	/*
+	 * here we care only about user ports. CPU port do not need this
+	 * configuration
+	 */
+	if (join) {
+		priv->isolated_ports &= ~BIT(port);
+		ar9331_sw_port_bridge_join(ds, port, br);
+	} else {
+		priv->isolated_ports |= BIT(port);
+		ar9331_sw_port_bridge_leave(ds, port, br);
+	}
+
+	return;
+error:
+	dev_err_ratelimited(priv->dev, "%s: error: %i\n", __func__, ret);
+}
+
 static const struct dsa_switch_ops ar9331_sw_ops = {
 	.get_tag_protocol	= ar9331_sw_get_tag_protocol,
 	.setup			= ar9331_sw_setup,
@@ -636,6 +1385,17 @@ static const struct dsa_switch_ops ar9331_sw_ops = {
 	.phylink_mac_link_down	= ar9331_sw_phylink_mac_link_down,
 	.phylink_mac_link_up	= ar9331_sw_phylink_mac_link_up,
 	.get_stats64		= ar9331_get_stats64,
+	.port_fast_age          = ar9331_sw_port_fast_age,
+	.port_fdb_del		= ar9331_sw_port_fdb_del,
+	.port_fdb_add		= ar9331_sw_port_fdb_add,
+	.port_fdb_dump		= ar9331_sw_port_fdb_dump,
+	.port_mdb_add           = ar9331_sw_port_mdb_add,
+	.port_mdb_del           = ar9331_sw_port_mdb_del,
+	.set_ageing_time	= ar9331_sw_set_ageing_time,
+	.port_bridge_join	= ar9331_sw_port_bridge_join,
+	.port_bridge_leave	= ar9331_sw_port_bridge_leave,
+	.port_egress_floods	= ar9331_sw_port_egress_floods,
+	.port_stp_state_set	= ar9331_sw_port_stp_state_set,
 };
 
 static irqreturn_t ar9331_sw_irq(int irq, void *data)
@@ -1002,6 +1762,8 @@ static int ar9331_sw_probe(struct mdio_device *mdiodev)
 	priv->ops = ar9331_sw_ops;
 	ds->ops = &priv->ops;
 	dev_set_drvdata(&mdiodev->dev, priv);
+	ds->ageing_time_min = AR9331_SW_AT_AGE_TIME_COEF;
+	ds->ageing_time_max = AR9331_SW_AT_AGE_TIME_COEF * U16_MAX;
 
 	for (i = 0; i < ARRAY_SIZE(priv->port); i++) {
 		struct ar9331_sw_port *port = &priv->port[i];
