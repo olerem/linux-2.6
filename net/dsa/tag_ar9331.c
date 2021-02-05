@@ -31,6 +31,12 @@ static struct sk_buff *ar9331_tag_xmit(struct sk_buff *skb,
 	__le16 *phdr;
 	u16 hdr;
 
+	if (dp->stp_state == BR_STATE_BLOCKING) {
+		// TODO: should we reflect it in the stats?
+		netdev_warn_once(dev, "%s:%i dropping blocking packet\n", __func__, __LINE__);
+		return NULL;
+	}
+
 	phdr = skb_push(skb, AR9331_HDR_LEN);
 
 	hdr = FIELD_PREP(AR9331_HDR_VERSION_MASK, AR9331_HDR_VERSION);
@@ -76,6 +82,10 @@ static struct sk_buff *ar9331_tag_rcv(struct sk_buff *skb,
 	skb->dev = dsa_master_find_slave(ndev, 0, port);
 	if (!skb->dev)
 		return NULL;
+
+	// TODO: should we test if port is connected to other ports before
+	// marking it as offload_fwd?
+	skb->offload_fwd_mark = true;
 
 	return skb;
 }
